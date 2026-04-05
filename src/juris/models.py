@@ -27,7 +27,6 @@ class Source(StrEnum):
 
     RIKSDAGEN = "riksdagen"
     REGERINGEN = "regeringen"
-    LAGRUMMET = "lagrummet"
 
 
 class Attachment(BaseModel):

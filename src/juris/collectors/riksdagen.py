@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from datetime import date, datetime
 
@@ -24,6 +25,7 @@ _DOCTYPE_MAP: dict[DocType, str] = {
     DocType.BET: "bet",
     DocType.DIR: "dir",
     DocType.SKR: "skr",
+    DocType.SFS: "sfs",
 }
 
 
@@ -83,7 +85,15 @@ class RiksdagenCollector(BaseCollector):
                 break
 
         designation = item.get("beteckning", item.get("nummer", ""))
-        session = item.get("rm")
+        session = item.get("rm") or None
+
+        # SFS beteckning is "YYYY:NNN" — split into year (session) and number
+        if doc_type == DocType.SFS:
+            m = re.match(r"^(\d{4}):(.+)$", designation)
+            if m:
+                session = m.group(1)
+                designation = m.group(2)
+
         doc_id = build_doc_id(doc_type, designation, session)
 
         # Parse date — format is "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
@@ -159,7 +169,12 @@ class RiksdagenCollector(BaseCollector):
             "sortorder": "desc",
         }
         if session:
-            params["rm"] = session
+            if doc_type == DocType.SFS:
+                # SFS uses year, not riksmöte — map to date range
+                params["from"] = f"{session}-01-01"
+                params["tom"] = f"{session}-12-31"
+            else:
+                params["rm"] = session
         if since:
             params["from"] = since.isoformat()
         if until:
