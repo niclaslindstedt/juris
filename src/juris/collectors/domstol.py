@@ -25,6 +25,9 @@ BASE_URL = "https://rattspraxis.etjanst.domstol.se"
 _COURT_MAP: dict[DocType, str] = {
     DocType.NJA: "HDO",  # Högsta domstolen
     DocType.AD: "ADO",  # Arbetsdomstolen
+    DocType.HFD: "HFD",  # Högsta förvaltningsdomstolen
+    DocType.MOD: "MOD",  # Mark- och miljööverdomstolen
+    DocType.PMOD: "PMOD",  # Patent- och marknadsöverdomstolen
 }
 
 # Regex to parse NJA references like "NJA 2025:19" or "NJA 2025 s. 283"
@@ -32,6 +35,12 @@ _NJA_REF_RE = re.compile(r"NJA\s+(\d{4})(?::|\s+s\.\s*)(\d+)")
 
 # Regex to parse AD references like "AD 2025 nr 19"
 _AD_REF_RE = re.compile(r"AD\s+(\d{4})\s+nr\s+(\d+)")
+
+# Regex to parse HFD references like "HFD 2021 ref. 56" or legacy "RÅ 2010 ref. 19"
+_HFD_REF_RE = re.compile(r"(?:HFD|RÅ)\s+(\d{4})\s+ref\.\s*(\d+)")
+
+# Regex to parse MÖD references like "MÖD 2011:26"
+_MOD_REF_RE = re.compile(r"MÖD\s+(\d{4}):(\d+)")
 
 PAGE_SIZE = 20
 
@@ -71,9 +80,37 @@ def _parse_ad_reference(referat_list: list[str]) -> tuple[str, str | None]:
     return "", None
 
 
+def _parse_hfd_reference(referat_list: list[str]) -> tuple[str, str | None]:
+    """Extract (designation, session) from HFD/RÅ reference strings.
+
+    Parses formats like "HFD 2021 ref. 56" or legacy "RÅ 2010 ref. 19".
+    Returns ("", None) if no match.
+    """
+    for ref in referat_list:
+        m = _HFD_REF_RE.search(ref.strip())
+        if m:
+            return m.group(2), m.group(1)  # (ref number, year)
+    return "", None
+
+
+def _parse_mod_reference(referat_list: list[str]) -> tuple[str, str | None]:
+    """Extract (designation, session) from MÖD reference strings.
+
+    Parses formats like "MÖD 2011:26".
+    Returns ("", None) if no match.
+    """
+    for ref in referat_list:
+        m = _MOD_REF_RE.search(ref.strip())
+        if m:
+            return m.group(2), m.group(1)  # (number, year)
+    return "", None
+
+
 _REFERENCE_PARSERS: dict[DocType, callable] = {
     DocType.NJA: _parse_nja_reference,
     DocType.AD: _parse_ad_reference,
+    DocType.HFD: _parse_hfd_reference,
+    DocType.MOD: _parse_mod_reference,
 }
 
 
