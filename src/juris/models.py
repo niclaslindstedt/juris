@@ -25,6 +25,8 @@ class DocType(StrEnum):
     HFD = "hfd"  # Högsta förvaltningsdomstolens årsbok
     MOD = "mod"  # Mark- och miljööverdomstolens avgöranden
     PMOD = "pmod"  # Patent- och marknadsöverdomstolens avgöranden
+    JO = "jo"  # Justitieombudsmannens beslut
+    JK = "jk"  # Justitiekanslerns beslut
 
 
 class Source(StrEnum):
@@ -33,6 +35,7 @@ class Source(StrEnum):
     RIKSDAGEN = "riksdagen"
     REGERINGEN = "regeringen"
     DOMSTOL = "domstol"
+    JO_JK = "jo_jk"
 
 
 class Attachment(BaseModel):

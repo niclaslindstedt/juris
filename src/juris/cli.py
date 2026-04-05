@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from juris.collectors.domstol import DomstolCollector
+from juris.collectors.jo_jk import JoJkCollector
 from juris.collectors.regeringen import RegeringenCollector
 from juris.collectors.riksdagen import RiksdagenCollector
 from juris.models import DocType, Source
@@ -22,6 +23,7 @@ COLLECTORS = {
     "riksdagen": RiksdagenCollector,
     "regeringen": RegeringenCollector,
     "domstol": DomstolCollector,
+    "jo_jk": JoJkCollector,
 }
 
 
