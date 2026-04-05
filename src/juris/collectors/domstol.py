@@ -21,11 +21,17 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://rattspraxis.etjanst.domstol.se"
 
-# Court code for Högsta domstolen
-_COURT_CODE = "HDO"
+# Mapping from DocType to Domstolsverket court code
+_COURT_MAP: dict[DocType, str] = {
+    DocType.NJA: "HDO",  # Högsta domstolen
+    DocType.AD: "ADO",  # Arbetsdomstolen
+}
 
 # Regex to parse NJA references like "NJA 2025:19" or "NJA 2025 s. 283"
 _NJA_REF_RE = re.compile(r"NJA\s+(\d{4})(?::|\s+s\.\s*)(\d+)")
+
+# Regex to parse AD references like "AD 2025 nr 19"
+_AD_REF_RE = re.compile(r"AD\s+(\d{4})\s+nr\s+(\d+)")
 
 PAGE_SIZE = 20
 
@@ -52,11 +58,30 @@ def _parse_nja_reference(referat_list: list[str]) -> tuple[str, str | None]:
     return "", None
 
 
+def _parse_ad_reference(referat_list: list[str]) -> tuple[str, str | None]:
+    """Extract (designation, session) from AD reference strings.
+
+    Parses formats like "AD 2025 nr 19".
+    Returns ("", None) if no match.
+    """
+    for ref in referat_list:
+        m = _AD_REF_RE.search(ref.strip())
+        if m:
+            return m.group(2), m.group(1)  # (nr, year)
+    return "", None
+
+
+_REFERENCE_PARSERS: dict[DocType, callable] = {
+    DocType.NJA: _parse_nja_reference,
+    DocType.AD: _parse_ad_reference,
+}
+
+
 class DomstolCollector(BaseCollector):
     """Collects court decisions from the Domstolsverket rättspraxis API."""
 
     source = Source.DOMSTOL
-    supported_doc_types = [DocType.NJA]
+    supported_doc_types = list(_COURT_MAP.keys())
 
     def __init__(self, rate_limit: float = 0.5) -> None:
         self._limiter = RateLimiter(min_interval=rate_limit)
@@ -93,14 +118,15 @@ class DomstolCollector(BaseCollector):
     # Response parsing
     # ------------------------------------------------------------------
 
-    def _parse_publication(self, pub: dict) -> Document | None:
+    def _parse_publication(self, pub: dict, doc_type: DocType) -> Document | None:
         """Map a PubliceringDTO dict to a Document."""
         referat_list: list[str] = pub.get("referatNummerLista", [])
         mal_list: list[str] = pub.get("malNummerLista", [])
         avgorandedatum: str = pub.get("avgorandedatum", "")
 
-        # Extract designation and session from NJA references
-        designation, session = _parse_nja_reference(referat_list)
+        # Extract designation and session using the appropriate parser
+        parser = _REFERENCE_PARSERS.get(doc_type, _parse_nja_reference)
+        designation, session = parser(referat_list)
 
         # Fallback: use case number and year from decision date
         if not designation:
@@ -141,14 +167,14 @@ class DomstolCollector(BaseCollector):
                     )
                 )
 
-        doc_id = build_doc_id(DocType.NJA, designation, session)
+        doc_id = build_doc_id(doc_type, designation, session)
 
         domstol = pub.get("domstol", {})
         source_id = pub.get("id", "")
 
         return Document(
             doc_id=doc_id,
-            doc_type=DocType.NJA,
+            doc_type=doc_type,
             designation=designation,
             session=session,
             title=title,
@@ -253,7 +279,7 @@ class DomstolCollector(BaseCollector):
 
         while True:
             params: dict[str, str | int] = {
-                "domstolkod": _COURT_CODE,
+                "domstolkod": _COURT_MAP[doc_type],
                 "page": page,
                 "pagesize": PAGE_SIZE,
             }
@@ -271,7 +297,7 @@ class DomstolCollector(BaseCollector):
                 if limit and count >= limit:
                     return
 
-                doc = self._parse_publication(pub)
+                doc = self._parse_publication(pub, doc_type)
                 if not doc:
                     continue
 
@@ -294,9 +320,13 @@ class DomstolCollector(BaseCollector):
 
             page += 1
 
-    async def get_document(self, source_id: str) -> Document | None:
+    async def get_document(self, source_id: str, doc_type: DocType | None = None) -> Document | None:
         """Fetch a single publication by its UUID."""
         data = await self._fetch_json(f"/api/v1/publiceringar/{source_id}")
         if not data or not isinstance(data, dict):
             return None
-        return self._parse_publication(data)
+        if doc_type is None:
+            court_code = data.get("domstol", {}).get("domstolKod", "HDO")
+            reverse_map = {v: k for k, v in _COURT_MAP.items()}
+            doc_type = reverse_map.get(court_code, DocType.NJA)
+        return self._parse_publication(data, doc_type)
