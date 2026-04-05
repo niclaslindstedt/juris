@@ -20,6 +20,7 @@ class DocType(StrEnum):
     DIR = "dir"  # Kommittédirektiv (committee directives)
     SKR = "skr"  # Skrivelser (government communications)
     SFS = "sfs"  # Svensk författningssamling (Swedish Code of Statutes)
+    NJA = "nja"  # Nytt Juridiskt Arkiv (Supreme Court precedents)
 
 
 class Source(StrEnum):
@@ -27,6 +28,7 @@ class Source(StrEnum):
 
     RIKSDAGEN = "riksdagen"
     REGERINGEN = "regeringen"
+    DOMSTOL = "domstol"
 
 
 class Attachment(BaseModel):

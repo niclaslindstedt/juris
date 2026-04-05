@@ -1,0 +1,302 @@
+"""Domstolsverket rättspraxis API collector (rattspraxis.etjanst.domstol.se)."""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections.abc import AsyncIterator
+from datetime import date, datetime
+from pathlib import Path
+from urllib.parse import quote
+
+import httpx
+
+from juris.collectors.base import BaseCollector
+from juris.models import Attachment, DocType, Document, Source
+from juris.pdf import extract_text as extract_pdf_text
+from juris.storage import _doc_dir
+from juris.utils import RateLimiter, build_doc_id
+
+logger = logging.getLogger(__name__)
+
+BASE_URL = "https://rattspraxis.etjanst.domstol.se"
+
+# Court code for Högsta domstolen
+_COURT_CODE = "HDO"
+
+# Regex to parse NJA references like "NJA 2025:19" or "NJA 2025 s. 283"
+_NJA_REF_RE = re.compile(r"NJA\s+(\d{4})(?::|\s+s\.\s*)(\d+)")
+
+PAGE_SIZE = 20
+
+
+def _parse_nja_reference(referat_list: list[str]) -> tuple[str, str | None]:
+    """Extract (designation, session) from NJA reference strings.
+
+    Tries formats like "NJA 2025:19" or "NJA 2025 s. 283".
+    Prefers the "NJA YYYY:N" format (short reference) over page references.
+    Returns ("", None) if no match.
+    """
+    # First pass: prefer "NJA YYYY:N" format
+    for ref in referat_list:
+        m = re.match(r"NJA\s+(\d{4}):(\d+)$", ref.strip())
+        if m:
+            return m.group(2), m.group(1)
+
+    # Second pass: accept "NJA YYYY s. N" format
+    for ref in referat_list:
+        m = _NJA_REF_RE.search(ref)
+        if m:
+            return m.group(2), m.group(1)
+
+    return "", None
+
+
+class DomstolCollector(BaseCollector):
+    """Collects court decisions from the Domstolsverket rättspraxis API."""
+
+    source = Source.DOMSTOL
+    supported_doc_types = [DocType.NJA]
+
+    def __init__(self, rate_limit: float = 0.5) -> None:
+        self._limiter = RateLimiter(min_interval=rate_limit)
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                base_url=BASE_URL,
+                timeout=30.0,
+                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
+            )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    async def _fetch_json(
+        self, path: str, params: dict[str, str | int] | None = None
+    ) -> list[dict] | dict | None:
+        """Fetch JSON from the API. Returns parsed JSON or None on error."""
+        await self._limiter.wait()
+        client = await self._get_client()
+        try:
+            resp = await client.get(path, params=params)
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Failed to fetch %s: %s", path, e)
+            return None
+
+    # ------------------------------------------------------------------
+    # Response parsing
+    # ------------------------------------------------------------------
+
+    def _parse_publication(self, pub: dict) -> Document | None:
+        """Map a PubliceringDTO dict to a Document."""
+        referat_list: list[str] = pub.get("referatNummerLista", [])
+        mal_list: list[str] = pub.get("malNummerLista", [])
+        avgorandedatum: str = pub.get("avgorandedatum", "")
+
+        # Extract designation and session from NJA references
+        designation, session = _parse_nja_reference(referat_list)
+
+        # Fallback: use case number and year from decision date
+        if not designation:
+            if mal_list:
+                # Remove spaces from case numbers like "T 4847-24"
+                designation = mal_list[0].replace(" ", "")
+            else:
+                designation = pub.get("id", "unknown")
+
+        if not session and avgorandedatum:
+            # Extract year from date string "YYYY-MM-DD"
+            session = avgorandedatum[:4] if len(avgorandedatum) >= 4 else None
+
+        # Parse decision date
+        try:
+            doc_date = date.fromisoformat(avgorandedatum) if avgorandedatum else date.today()
+        except ValueError:
+            doc_date = date.today()
+
+        title = pub.get("benamning", "").strip()
+        if not title:
+            title = designation
+
+        # Build attachments from bilagaLista
+        attachments: list[Attachment] = []
+        for bilaga in pub.get("bilagaLista", []):
+            lagring_id = bilaga.get("fillagringId", "")
+            filnamn = bilaga.get("filnamn", "attachment.pdf")
+            if lagring_id:
+                # lagringId contains slashes (e.g. "190/d3/38/uuid")
+                # that must be URL-encoded in the path
+                encoded_id = quote(lagring_id, safe="")
+                attachments.append(
+                    Attachment(
+                        filename=filnamn,
+                        url=f"{BASE_URL}/api/v1/bilagor/{encoded_id}",
+                        mime_type="application/pdf",
+                    )
+                )
+
+        doc_id = build_doc_id(DocType.NJA, designation, session)
+
+        domstol = pub.get("domstol", {})
+        source_id = pub.get("id", "")
+
+        return Document(
+            doc_id=doc_id,
+            doc_type=DocType.NJA,
+            designation=designation,
+            session=session,
+            title=title,
+            summary=pub.get("sammanfattning"),
+            text=pub.get("innehall"),
+            date=doc_date,
+            department=domstol.get("domstolNamn"),
+            source=Source.DOMSTOL,
+            source_id=source_id,
+            source_url=f"{BASE_URL}/api/v1/publiceringar/{source_id}" if source_id else None,
+            fetched_at=datetime.now(),
+            attachments=attachments,
+        )
+
+    # ------------------------------------------------------------------
+    # PDF download & extraction
+    # ------------------------------------------------------------------
+
+    async def _download_file(self, url: str, dest: Path) -> bool:
+        """Download a file via streaming. Returns True on success."""
+        await self._limiter.wait()
+        client = await self._get_client()
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            async with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                with open(dest, "wb") as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
+            return True
+        except (httpx.HTTPError, OSError) as e:
+            logger.warning("Failed to download %s: %s", url, e)
+            return False
+
+    async def download_attachments(
+        self, doc: Document, base_dir: Path
+    ) -> Document:
+        """Download PDF attachments and extract text from the primary one."""
+        pdf_attachments = [
+            a for a in doc.attachments if a.mime_type == "application/pdf"
+        ]
+        if not pdf_attachments:
+            return doc
+
+        attach_dir = _doc_dir(base_dir, doc.doc_type, doc.session) / "attachments"
+        primary_text: str | None = None
+
+        for i, attachment in enumerate(pdf_attachments):
+            dest = attach_dir / attachment.filename
+            logger.info("Downloading PDF: %s", attachment.filename)
+
+            if not await self._download_file(attachment.url, dest):
+                continue
+
+            rel_path = str(dest.relative_to(base_dir))
+            attachment.local_path = rel_path
+
+            # Extract text from the first (primary) PDF
+            if i == 0:
+                primary_text = extract_pdf_text(dest)
+                if primary_text:
+                    logger.info(
+                        "Extracted %d chars from %s",
+                        len(primary_text),
+                        attachment.filename,
+                    )
+
+        # Only overwrite text if the document didn't already have content
+        if primary_text and not doc.text:
+            doc.text = primary_text
+
+        return doc
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    async def collect(
+        self,
+        doc_type: DocType,
+        *,
+        session: str | None = None,
+        since: date | None = None,
+        until: date | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[Document]:
+        """Yield court decisions from the Domstolsverket API."""
+        if doc_type not in self.supported_doc_types:
+            raise ValueError(f"Unsupported doc type for Domstol: {doc_type}")
+
+        # If session is a year like "2025", convert to date range
+        if session and not since and not until:
+            try:
+                year = int(session)
+                since = date(year, 1, 1)
+                until = date(year, 12, 31)
+            except ValueError:
+                pass
+
+        count = 0
+        page = 0
+
+        while True:
+            params: dict[str, str | int] = {
+                "domstolkod": _COURT_CODE,
+                "page": page,
+                "pagesize": PAGE_SIZE,
+            }
+
+            logger.info("Fetching publications page %d", page)
+            data = await self._fetch_json("/api/v1/publiceringar", params=params)
+
+            if not data or not isinstance(data, list):
+                break
+
+            if not data:
+                break
+
+            for pub in data:
+                if limit and count >= limit:
+                    return
+
+                doc = self._parse_publication(pub)
+                if not doc:
+                    continue
+
+                # Filter by date range
+                if since and doc.date < since:
+                    continue
+                if until and doc.date > until:
+                    continue
+
+                # Filter by session if specified and not already converted to dates
+                if session and doc.session != session:
+                    continue
+
+                yield doc
+                count += 1
+
+            # Stop if fewer results than a full page
+            if len(data) < PAGE_SIZE:
+                break
+
+            page += 1
+
+    async def get_document(self, source_id: str) -> Document | None:
+        """Fetch a single publication by its UUID."""
+        data = await self._fetch_json(f"/api/v1/publiceringar/{source_id}")
+        if not data or not isinstance(data, dict):
+            return None
+        return self._parse_publication(data)
