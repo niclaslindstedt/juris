@@ -21,6 +21,7 @@ class DocType(StrEnum):
     SKR = "skr"  # Skrivelser (government communications)
     SFS = "sfs"  # Svensk författningssamling (Swedish Code of Statutes)
     NJA = "nja"  # Nytt Juridiskt Arkiv (Supreme Court precedents)
+    AD = "ad"  # Arbetsdomstolens domar (Labour Court decisions)
 
 
 class Source(StrEnum):
