@@ -92,6 +92,9 @@ def collect(
                     click.echo(f"  skip {doc.doc_id} (exists)")
                     continue
 
+                if not skip_content:
+                    doc = await collector.download_attachments(doc, data_dir)
+
                 path = save_document(doc, data_dir)
                 collected += 1
                 click.echo(f"  saved {doc.doc_id} -> {path}")

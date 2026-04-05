@@ -35,6 +35,7 @@ class Attachment(BaseModel):
     url: str
     mime_type: str | None = None
     size_bytes: int | None = None
+    local_path: str | None = None  # Relative path to downloaded file
 
 
 class Document(BaseModel):
