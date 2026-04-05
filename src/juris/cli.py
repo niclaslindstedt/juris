@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from juris.collectors.lagrummet import LagrummetCollector
 from juris.collectors.regeringen import RegeringenCollector
 from juris.collectors.riksdagen import RiksdagenCollector
 from juris.models import DocType, Source
@@ -20,6 +21,7 @@ DEFAULT_DATA_DIR = Path("data")
 COLLECTORS = {
     "riksdagen": RiksdagenCollector,
     "regeringen": RegeringenCollector,
+    "lagrummet": LagrummetCollector,
 }
 
 

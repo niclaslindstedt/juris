@@ -19,6 +19,7 @@ class DocType(StrEnum):
     LAGR = "lagr"  # Lagrådsremisser (legal council referrals)
     DIR = "dir"  # Kommittédirektiv (committee directives)
     SKR = "skr"  # Skrivelser (government communications)
+    SFS = "sfs"  # Svensk författningssamling (Swedish Code of Statutes)
 
 
 class Source(StrEnum):
@@ -26,6 +27,7 @@ class Source(StrEnum):
 
     RIKSDAGEN = "riksdagen"
     REGERINGEN = "regeringen"
+    LAGRUMMET = "lagrummet"
 
 
 class Attachment(BaseModel):
