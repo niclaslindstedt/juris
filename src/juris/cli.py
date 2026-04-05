@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from juris.collectors.regeringen import RegeringenCollector
 from juris.collectors.riksdagen import RiksdagenCollector
 from juris.models import DocType, Source
 from juris.state import load_state, save_state
@@ -18,6 +19,7 @@ DEFAULT_DATA_DIR = Path("data")
 
 COLLECTORS = {
     "riksdagen": RiksdagenCollector,
+    "regeringen": RegeringenCollector,
 }
 
 
@@ -89,6 +91,9 @@ def collect(
                     skipped += 1
                     click.echo(f"  skip {doc.doc_id} (exists)")
                     continue
+
+                if not skip_content:
+                    doc = await collector.download_attachments(doc, data_dir)
 
                 path = save_document(doc, data_dir)
                 collected += 1
