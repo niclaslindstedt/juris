@@ -22,6 +22,9 @@ class DocType(StrEnum):
     SFS = "sfs"  # Svensk författningssamling (Swedish Code of Statutes)
     NJA = "nja"  # Nytt Juridiskt Arkiv (Supreme Court precedents)
     AD = "ad"  # Arbetsdomstolens domar (Labour Court decisions)
+    HFD = "hfd"  # Högsta förvaltningsdomstolens årsbok
+    MOD = "mod"  # Mark- och miljööverdomstolens avgöranden
+    PMOD = "pmod"  # Patent- och marknadsöverdomstolens avgöranden
 
 
 class Source(StrEnum):
