@@ -1,0 +1,216 @@
+"""Riksdagen API collector (data.riksdagen.se)."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator
+from datetime import date, datetime
+
+import httpx
+
+from juris.collectors.base import BaseCollector
+from juris.models import Attachment, DocType, Document, Source
+from juris.utils import RateLimiter, build_doc_id, html_to_text
+
+logger = logging.getLogger(__name__)
+
+BASE_URL = "https://data.riksdagen.se"
+
+# Map our DocType to Riksdagen's doktyp parameter
+_DOCTYPE_MAP: dict[DocType, str] = {
+    DocType.PROP: "prop",
+    DocType.SOU: "sou",
+    DocType.MOT: "mot",
+    DocType.BET: "bet",
+    DocType.DIR: "dir",
+    DocType.SKR: "skr",
+}
+
+
+class RiksdagenCollector(BaseCollector):
+    """Collects documents from the Riksdagen open data API."""
+
+    source = Source.RIKSDAGEN
+    supported_doc_types = list(_DOCTYPE_MAP.keys())
+
+    def __init__(self, rate_limit: float = 0.5) -> None:
+        self._limiter = RateLimiter(min_interval=rate_limit)
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                base_url=BASE_URL,
+                timeout=30.0,
+                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
+            )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    async def _fetch_json(self, url: str) -> dict | None:
+        """Fetch a URL and return parsed JSON, or None on error."""
+        await self._limiter.wait()
+        client = await self._get_client()
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Failed to fetch %s: %s", url, e)
+            return None
+
+    async def _fetch_document_html(self, dok_id: str) -> str | None:
+        """Fetch the full HTML content for a document."""
+        data = await self._fetch_json(f"{BASE_URL}/dokument/{dok_id}.json")
+        if not data:
+            return None
+        doc_data = data.get("dokumentstatus", {}).get("dokument", {})
+        return doc_data.get("html")
+
+    def _parse_document(self, item: dict, full_html: str | None = None) -> Document:
+        """Convert a Riksdagen API document item to our Document model."""
+        dok_id = item["dok_id"]
+        doc_type_str = item.get("doktyp", "").lower()
+
+        # Reverse lookup DocType from Riksdagen's type string
+        doc_type = DocType.PROP  # default
+        for dt, rk_type in _DOCTYPE_MAP.items():
+            if rk_type == doc_type_str:
+                doc_type = dt
+                break
+
+        designation = item.get("beteckning", item.get("nummer", ""))
+        session = item.get("rm")
+        doc_id = build_doc_id(doc_type, designation, session)
+
+        # Parse date — format is "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+        date_str = item.get("datum", "")
+        doc_date = date.fromisoformat(date_str[:10]) if date_str else date.today()
+
+        # Text extraction
+        text = None
+        html = full_html
+        if html:
+            text = html_to_text(html)
+
+        # Attachments
+        attachments: list[Attachment] = []
+        filbilaga = item.get("filbilaga")
+        if filbilaga and isinstance(filbilaga, dict):
+            fils = filbilaga.get("fil", [])
+            if isinstance(fils, dict):
+                fils = [fils]
+            for fil in fils:
+                if isinstance(fil, dict) and fil.get("url"):
+                    attachments.append(
+                        Attachment(
+                            filename=fil.get("namn", ""),
+                            url=fil["url"],
+                            mime_type=fil.get("typ"),
+                            size_bytes=int(fil["storlek"]) if fil.get("storlek") else None,
+                        )
+                    )
+
+        return Document(
+            doc_id=doc_id,
+            doc_type=doc_type,
+            designation=designation,
+            session=session,
+            title=item.get("titel", ""),
+            summary=item.get("undertitel") or None,
+            text=text,
+            html=html,
+            date=doc_date,
+            department=item.get("organ") or None,
+            source=Source.RIKSDAGEN,
+            source_id=dok_id,
+            source_url=f"{BASE_URL}/dokument/{dok_id}",
+            fetched_at=datetime.now(),
+            attachments=attachments,
+        )
+
+    async def collect(
+        self,
+        doc_type: DocType,
+        *,
+        session: str | None = None,
+        since: date | None = None,
+        until: date | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[Document]:
+        """Yield documents from the Riksdagen API."""
+        if doc_type not in _DOCTYPE_MAP:
+            raise ValueError(f"Unsupported doc type for Riksdagen: {doc_type}")
+
+        rk_type = _DOCTYPE_MAP[doc_type]
+        page_size = 20
+        count = 0
+
+        # Build initial URL
+        params: dict[str, str] = {
+            "doktyp": rk_type,
+            "utformat": "json",
+            "antal": str(page_size),
+            "sida": "1",
+            "sort": "datum",
+            "sortorder": "desc",
+        }
+        if session:
+            params["rm"] = session
+        if since:
+            params["from"] = since.isoformat()
+        if until:
+            params["tom"] = until.isoformat()
+
+        url = f"{BASE_URL}/dokumentlista/?" + "&".join(f"{k}={v}" for k, v in params.items())
+
+        while url:
+            data = await self._fetch_json(url)
+            if not data:
+                break
+
+            doc_list = data.get("dokumentlista", {})
+            documents = doc_list.get("dokument", [])
+
+            if not documents:
+                break
+
+            # Handle single document (API returns dict instead of list)
+            if isinstance(documents, dict):
+                documents = [documents]
+
+            for item in documents:
+                if limit and count >= limit:
+                    return
+
+                dok_id = item.get("dok_id", "")
+                logger.info("Fetching %s: %s", dok_id, item.get("titel", "")[:60])
+
+                # Fetch full HTML content
+                html = await self._fetch_document_html(dok_id)
+                doc = self._parse_document(item, full_html=html)
+                yield doc
+                count += 1
+
+            # Follow pagination
+            next_url = doc_list.get("@nasta_sida")
+            if next_url and (not limit or count < limit):
+                url = next_url
+            else:
+                break
+
+    async def get_document(self, source_id: str) -> Document | None:
+        """Fetch a single document by its Riksdagen dok_id."""
+        data = await self._fetch_json(f"{BASE_URL}/dokumentstatus/{source_id}.json")
+        if not data:
+            return None
+
+        doc_data = data.get("dokumentstatus", {}).get("dokument", {})
+        if not doc_data:
+            return None
+
+        html = doc_data.get("html")
+        return self._parse_document(doc_data, full_html=html)
