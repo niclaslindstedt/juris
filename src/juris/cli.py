@@ -36,6 +36,18 @@ COLLECTORS = {
 }
 
 
+def _build_doc_type_providers() -> dict[str, list[str]]:
+    """Map each doc_type to the list of source names supporting it."""
+    mapping: dict[str, list[str]] = {}
+    for source_name, collector_cls in COLLECTORS.items():
+        for dt in collector_cls.supported_doc_types:
+            mapping.setdefault(dt.value, []).append(source_name)
+    return mapping
+
+
+DOC_TYPE_PROVIDERS = _build_doc_type_providers()
+
+
 def _parse_date(value: str | None) -> date | None:
     if value is None:
         return None
@@ -146,6 +158,106 @@ def collect(
 
     click.echo(f"Collecting {dt.value} from {source}...")
     asyncio.run(_run())
+
+
+@main.command("collect-type")
+@click.argument("doc_type", type=click.Choice([dt.value for dt in DocType]))
+@click.option("--session", default=None, help="Parliamentary session, e.g. 2024/25.")
+@click.option("--since", default=None, help="Collect documents from this date (YYYY-MM-DD).")
+@click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
+@click.option("--limit", default=None, type=int, help="Max documents per provider.")
+@click.option(
+    "--skip-existing/--no-skip-existing", default=True,
+    help="Skip already collected documents.",
+)
+@click.option(
+    "--skip-content/--no-skip-content", default=False,
+    help="Skip fetching full text (faster, metadata only).",
+)
+@click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
+@click.pass_context
+def collect_type(
+    ctx: click.Context,
+    doc_type: str,
+    session: str | None,
+    since: str | None,
+    until: str | None,
+    limit: int | None,
+    skip_existing: bool,
+    skip_content: bool,
+    dry_run: bool,
+) -> None:
+    """Collect a document type from all supporting providers."""
+    data_dir: Path = ctx.obj["data_dir"]
+    dt = DocType(doc_type)
+
+    providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    if not providers:
+        raise click.UsageError(f"No providers found for document type '{doc_type}'.")
+
+    if dry_run:
+        click.echo(f"Providers for '{doc_type}': {', '.join(providers)}")
+        return
+
+    click.echo(
+        f"Collecting {doc_type} from {len(providers)} provider(s): "
+        f"{', '.join(providers)}"
+    )
+
+    async def _run_all() -> tuple[int, int]:
+        grand_collected = 0
+        grand_skipped = 0
+
+        for source_name in providers:
+            src = Source(source_name)
+            collector = COLLECTORS[source_name]()
+            state = load_state(data_dir, src, dt)
+
+            click.echo(f"\n--- {source_name} ---")
+            collected = 0
+            skipped = 0
+            try:
+                async for doc in collector.collect(
+                    dt,
+                    session=session,
+                    since=_parse_date(since),
+                    until=_parse_date(until),
+                    limit=limit,
+                    skip_content=skip_content,
+                ):
+                    exists = document_exists(
+                        doc.doc_id, doc.doc_type, doc.session, data_dir,
+                    )
+                    if skip_existing and exists:
+                        skipped += 1
+                        click.echo(f"  skip {doc.doc_id} (exists)")
+                        continue
+
+                    if not skip_content:
+                        doc = await collector.download_attachments(doc, data_dir)
+
+                    path = save_document(doc, data_dir)
+                    collected += 1
+                    click.echo(f"  saved {doc.doc_id} -> {path}")
+
+                    state.total_collected += 1
+                    if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
+                        state.last_fetched_date = str(doc.date)
+            finally:
+                await collector.close()
+
+            save_state(state, data_dir)
+            click.echo(f"  {source_name}: {collected} collected, {skipped} skipped")
+            grand_collected += collected
+            grand_skipped += skipped
+
+        return grand_collected, grand_skipped
+
+    total_collected, total_skipped = asyncio.run(_run_all())
+    click.echo(
+        f"\nTotal: {total_collected} collected, {total_skipped} skipped "
+        f"across {len(providers)} provider(s)"
+    )
 
 
 @main.command()
