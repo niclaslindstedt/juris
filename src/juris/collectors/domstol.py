@@ -13,7 +13,7 @@ import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.utils import build_doc_id
+from juris.utils import build_doc_id, html_to_text
 
 
 def _strip_court_header(text: str) -> str:
@@ -186,7 +186,18 @@ class DomstolCollector(BaseCollector):
 
         title = pub.get("benamning", "").strip()
         if not title:
-            title = designation
+            # Build a descriptive title from court name, reference, and case number
+            court_name = pub.get("domstol", {}).get("domstolNamn", "")
+            ref_str = ", ".join(referat_list) if referat_list else ""
+            mal_str = ", ".join(mal_list) if mal_list else ""
+            if ref_str:
+                title = ref_str
+            elif court_name and mal_str:
+                title = f"{court_name} mål {mal_str}"
+            elif mal_str:
+                title = f"Mål {mal_str}"
+            else:
+                title = designation
 
         # Build attachments from bilagaLista
         attachments: list[Attachment] = []
@@ -210,6 +221,17 @@ class DomstolCollector(BaseCollector):
         domstol = pub.get("domstol", {})
         source_id = pub.get("id", "")
 
+        # The API's "innehall" field may contain raw HTML — clean it
+        raw_content = pub.get("innehall")
+        text: str | None = None
+        html: str | None = None
+        if raw_content:
+            if "<" in raw_content and ">" in raw_content:
+                html = raw_content
+                text = html_to_text(raw_content)
+            else:
+                text = raw_content
+
         return Document(
             doc_id=doc_id,
             doc_type=doc_type,
@@ -217,7 +239,8 @@ class DomstolCollector(BaseCollector):
             session=session,
             title=title,
             summary=pub.get("sammanfattning"),
-            text=pub.get("innehall"),
+            text=text,
+            html=html,
             date=doc_date,
             department=domstol.get("domstolNamn"),
             source=Source.DOMSTOL,

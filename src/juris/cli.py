@@ -75,6 +75,62 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+async def _collect_from_source(
+    source_name: str,
+    dt: DocType,
+    data_dir: Path,
+    *,
+    session: str | None = None,
+    since: date | None = None,
+    until: date | None = None,
+    limit: int | None = None,
+    skip_existing: bool = True,
+    skip_content: bool = False,
+) -> tuple[int, int]:
+    """Run collection for a single (source, doc_type) pair.
+
+    Returns (collected_count, skipped_count).
+    """
+    src = Source(source_name)
+    collector = COLLECTORS[source_name]()
+    state = load_state(data_dir, src, dt)
+
+    collected = 0
+    skipped = 0
+    try:
+        async for doc in collector.collect(
+            dt,
+            session=session,
+            since=since,
+            until=until,
+            limit=limit,
+            skip_content=skip_content,
+        ):
+            exists = document_exists(
+                doc.doc_id, doc.doc_type, doc.session, data_dir,
+            )
+            if skip_existing and exists:
+                skipped += 1
+                click.echo(f"  skip {doc.doc_id} (exists)")
+                continue
+
+            if not skip_content:
+                doc = await collector.download_attachments(doc, data_dir)
+
+            path = save_document(doc, data_dir)
+            collected += 1
+            click.echo(f"  saved {doc.doc_id} -> {path}")
+
+            state.total_collected += 1
+            if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
+                state.last_fetched_date = str(doc.date)
+    finally:
+        await collector.close()
+
+    save_state(state, data_dir)
+    return collected, skipped
+
+
 @click.group()
 @click.option(
     "--data-dir", type=click.Path(), default="data",
@@ -126,56 +182,28 @@ def collect(
     """Collect documents from a source."""
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
-    src = Source(source)
 
     collector_cls = COLLECTORS[source]
-    collector = collector_cls()
-
-    if dt not in collector.supported_doc_types:
-        supported = ", ".join(t.value for t in collector.supported_doc_types)
+    if dt not in collector_cls.supported_doc_types:
+        supported = ", ".join(t.value for t in collector_cls.supported_doc_types)
         raise click.UsageError(
             f"Source '{source}' does not support type '{doc_type}'. "
             f"Supported types: {supported}"
         )
 
-    state = load_state(data_dir, src, dt)
-
-    async def _run() -> int:
-        collected = 0
-        skipped = 0
-        try:
-            async for doc in collector.collect(
-                dt,
-                session=session,
-                since=_parse_date(since),
-                until=_parse_date(until),
-                limit=limit,
-                skip_content=skip_content,
-            ):
-                exists = document_exists(
-                    doc.doc_id, doc.doc_type, doc.session, data_dir,
-                )
-                if skip_existing and exists:
-                    skipped += 1
-                    click.echo(f"  skip {doc.doc_id} (exists)")
-                    continue
-
-                if not skip_content:
-                    doc = await collector.download_attachments(doc, data_dir)
-
-                path = save_document(doc, data_dir)
-                collected += 1
-                click.echo(f"  saved {doc.doc_id} -> {path}")
-
-                state.total_collected += 1
-                if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
-                    state.last_fetched_date = str(doc.date)
-        finally:
-            await collector.close()
-
-        save_state(state, data_dir)
+    async def _run() -> None:
+        collected, skipped = await _collect_from_source(
+            source,
+            dt,
+            data_dir,
+            session=session,
+            since=_parse_date(since),
+            until=_parse_date(until),
+            limit=limit,
+            skip_existing=skip_existing,
+            skip_content=skip_content,
+        )
         click.echo(f"\nDone: {collected} collected, {skipped} skipped")
-        return collected
 
     click.echo(f"Collecting {dt.value} from {source}...")
     asyncio.run(_run())
@@ -251,44 +279,18 @@ def collect_type(
         grand_skipped = 0
 
         for source_name in providers:
-            src = Source(source_name)
-            collector = COLLECTORS[source_name]()
-            state = load_state(data_dir, src, dt)
-
             click.echo(f"\n--- {source_name} ---")
-            collected = 0
-            skipped = 0
-            try:
-                async for doc in collector.collect(
-                    dt,
-                    session=session,
-                    since=_parse_date(since),
-                    until=_parse_date(until),
-                    limit=limit,
-                    skip_content=skip_content,
-                ):
-                    exists = document_exists(
-                        doc.doc_id, doc.doc_type, doc.session, data_dir,
-                    )
-                    if skip_existing and exists:
-                        skipped += 1
-                        click.echo(f"  skip {doc.doc_id} (exists)")
-                        continue
-
-                    if not skip_content:
-                        doc = await collector.download_attachments(doc, data_dir)
-
-                    path = save_document(doc, data_dir)
-                    collected += 1
-                    click.echo(f"  saved {doc.doc_id} -> {path}")
-
-                    state.total_collected += 1
-                    if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
-                        state.last_fetched_date = str(doc.date)
-            finally:
-                await collector.close()
-
-            save_state(state, data_dir)
+            collected, skipped = await _collect_from_source(
+                source_name,
+                dt,
+                data_dir,
+                session=session,
+                since=_parse_date(since),
+                until=_parse_date(until),
+                limit=limit,
+                skip_existing=skip_existing,
+                skip_content=skip_content,
+            )
             click.echo(f"  {source_name}: {collected} collected, {skipped} skipped")
             grand_collected += collected
             grand_skipped += skipped
@@ -368,43 +370,17 @@ def collect_all(
         grand_skipped = 0
 
         for dt, source_name in plan:
-            src = Source(source_name)
-            collector = COLLECTORS[source_name]()
-            state = load_state(data_dir, src, dt)
-
             click.echo(f"\n--- {dt.value} <- {source_name} ---")
-            collected = 0
-            skipped = 0
-            try:
-                async for doc in collector.collect(
-                    dt,
-                    since=_parse_date(since),
-                    until=_parse_date(until),
-                    limit=limit,
-                    skip_content=skip_content,
-                ):
-                    exists = document_exists(
-                        doc.doc_id, doc.doc_type, doc.session, data_dir,
-                    )
-                    if skip_existing and exists:
-                        skipped += 1
-                        click.echo(f"  skip {doc.doc_id} (exists)")
-                        continue
-
-                    if not skip_content:
-                        doc = await collector.download_attachments(doc, data_dir)
-
-                    path = save_document(doc, data_dir)
-                    collected += 1
-                    click.echo(f"  saved {doc.doc_id} -> {path}")
-
-                    state.total_collected += 1
-                    if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
-                        state.last_fetched_date = str(doc.date)
-            finally:
-                await collector.close()
-
-            save_state(state, data_dir)
+            collected, skipped = await _collect_from_source(
+                source_name,
+                dt,
+                data_dir,
+                since=_parse_date(since),
+                until=_parse_date(until),
+                limit=limit,
+                skip_existing=skip_existing,
+                skip_content=skip_content,
+            )
             click.echo(f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped")
             grand_collected += collected
             grand_skipped += skipped

@@ -34,12 +34,18 @@ _PATH_TO_DOCTYPE: dict[str, DocType] = {v: k for k, v in _DOCTYPE_PATHS.items()}
 
 # Regex patterns for extracting designation and session from document text.
 # Group 1 = session/year, Group 2 = designation number.
-_DESIGNATION_PATTERNS: dict[DocType, re.Pattern[str]] = {
-    DocType.PROP: re.compile(r"Prop\.\s*(\d{4}/\d{2}):(\d+)"),
-    DocType.SKR: re.compile(r"Skr\.\s*(\d{4}/\d{2}):(\d+)"),
-    DocType.SOU: re.compile(r"SOU\s+(\d{4}):(\d+)"),
-    DocType.DS: re.compile(r"Ds\s+(\d{4}):(\d+)"),
-    DocType.DIR: re.compile(r"Dir\.\s*(\d{4}):(\d+)"),
+_DESIGNATION_PATTERNS: dict[DocType, list[re.Pattern[str]]] = {
+    DocType.PROP: [re.compile(r"Prop\.\s*(\d{4}/\d{2}):(\d+)")],
+    DocType.SKR: [re.compile(r"Skr\.\s*(\d{4}/\d{2}):(\d+)")],
+    DocType.SOU: [re.compile(r"SOU\s+(\d{4}):(\d+)")],
+    DocType.DS: [
+        re.compile(r"Ds\s+(\d{4}):(\d+)"),
+        re.compile(r"ds[- ](\d{4})[- :](\d+)", re.IGNORECASE),
+    ],
+    DocType.DIR: [re.compile(r"Dir\.\s*(\d{4}):(\d+)")],
+    DocType.LAGR: [
+        re.compile(r"Lagrådsremiss\s+(\d{4}):(\d+)"),
+    ],
 }
 
 PAGE_SIZE = 10  # Regeringen.se shows 10 results per page
@@ -53,8 +59,8 @@ def _parse_designation(
     Returns ("229", "2025/26") for propositions, ("25", "2026") for SOU, etc.
     Falls back to ("", None) if no match is found.
     """
-    pattern = _DESIGNATION_PATTERNS.get(doc_type)
-    if pattern:
+    patterns = _DESIGNATION_PATTERNS.get(doc_type, [])
+    for pattern in patterns:
         m = pattern.search(text)
         if m:
             return m.group(2), m.group(1)
@@ -146,7 +152,12 @@ class RegeringenCollector(BaseCollector):
         # Designation and session
         designation, session = _parse_designation(page_text, doc_type)
         if not designation:
-            # Try extracting from the URL slug as fallback
+            # Try the <title> tag which often contains "Ds 2026:6" etc.
+            title_tag = soup.find("title")
+            if title_tag:
+                designation, session = _parse_designation(title_tag.get_text(), doc_type)
+        if not designation:
+            # Try extracting from the URL slug (e.g. "/ds-20266/")
             designation, session = _parse_designation(page_url, doc_type)
         if not designation:
             logger.warning("Could not parse designation from %s", page_url)
@@ -210,6 +221,10 @@ class RegeringenCollector(BaseCollector):
                     size_bytes=size_bytes,
                 )
             )
+
+        # Infer session from date when designation parsing didn't provide one
+        if not session and doc_date:
+            session = str(doc_date.year)
 
         # Build the source_id from the relative path
         source_id = page_url.replace(BASE_URL, "")

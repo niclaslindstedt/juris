@@ -5,11 +5,15 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import warnings
 from datetime import date
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, XMLParsedAsHTMLWarning
 
 from juris.models import DocType
+
+# Suppress BeautifulSoup warning when parsing XML-like HTML from EUR-Lex etc.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Swedish month names for date parsing
 _SWEDISH_MONTHS: dict[str, int] = {
@@ -143,9 +147,10 @@ def build_doc_id(doc_type: DocType, designation: str, session: str | None = None
 
 
 def sanitize_filename(doc_id: str) -> str:
-    """Convert a doc_id to a safe filename (no slashes or colons).
+    """Convert a doc_id to a safe filename (no slashes, colons, or spaces).
 
     Examples:
         "prop-2024/25:208" -> "prop-2024-25_208"
+        "foreskrift-2023:AFS 2023:1" -> "foreskrift-2023_AFS-2023_1"
     """
-    return doc_id.replace("/", "-").replace(":", "_")
+    return doc_id.replace("/", "-").replace(":", "_").replace(" ", "-")

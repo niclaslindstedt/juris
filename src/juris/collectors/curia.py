@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 
@@ -91,11 +92,10 @@ class CjeuCollector(BaseCollector):
             designation=designation,
             session=session,
             title=title,
-            summary=ecli if ecli else None,
             date=doc_date,
             department="Court of Justice of the European Union",
             source=Source.CURIA,
-            source_id=celex,
+            source_id=ecli or celex,
             source_url=eurlex_url(celex),
             fetched_at=datetime.now(tz=UTC),
         )
@@ -154,10 +154,17 @@ class CjeuCollector(BaseCollector):
                 if not doc:
                     continue
 
-                if not skip_content and doc.source_id:
-                    text = await self._fetch_full_text(doc.source_id)
+                if not skip_content and doc.designation:
+                    text = await self._fetch_full_text(doc.designation)
                     if text:
                         doc.text = text
+                        # Extract summary from first substantial paragraph
+                        if not doc.summary:
+                            for paragraph in re.split(r"\n{2,}", text):
+                                stripped = paragraph.strip()
+                                if len(stripped) > 80:
+                                    doc.summary = stripped[:500]
+                                    break
 
                 yield doc
                 count += 1
