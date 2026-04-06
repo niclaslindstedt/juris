@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id, html_to_text
+from juris.utils import build_doc_id, html_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -64,21 +64,7 @@ class RiksdagenCollector(BaseCollector):
     supported_doc_types = list(_DOCTYPE_MAP.keys())
 
     def __init__(self, rate_limit: float = 0.5) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=BASE_URL,
-                timeout=30.0,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit, base_url=BASE_URL)
 
     async def _fetch_json(self, url: str) -> dict | None:
         """Fetch a URL and return parsed JSON, or None on error."""
@@ -170,7 +156,7 @@ class RiksdagenCollector(BaseCollector):
             source=Source.RIKSDAGEN,
             source_id=dok_id,
             source_url=f"{BASE_URL}/dokument/{dok_id}",
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
 

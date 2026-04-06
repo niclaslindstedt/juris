@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -39,7 +39,7 @@ def load_state(base_dir: Path, source: Source, doc_type: DocType) -> CollectionS
 
 def save_state(state: CollectionState, base_dir: Path) -> None:
     """Persist collection state to disk."""
-    state.last_run_at = datetime.now().isoformat()
+    state.last_run_at = datetime.now(tz=UTC).isoformat()
     path = _state_path(base_dir, state.source, state.doc_type)
     path.write_text(
         json.dumps(state.model_dump(), ensure_ascii=False, indent=2) + "\n",

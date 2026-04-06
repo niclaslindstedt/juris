@@ -92,7 +92,7 @@ def save_document(doc: Document, base_dir: Path) -> Path:
     if doc.session:
         designation = f"{type_label} {doc.session}:{doc.designation}"
     else:
-        designation = doc.designation
+        designation = f"{type_label} {doc.designation}"
 
     lines = [
         "---",
@@ -111,7 +111,9 @@ def save_document(doc: Document, base_dir: Path) -> Path:
     return json_path
 
 
-def load_document(doc_id: str, doc_type: DocType, session: str | None, base_dir: Path) -> Document | None:
+def load_document(
+    doc_id: str, doc_type: DocType, session: str | None, base_dir: Path,
+) -> Document | None:
     """Load a document from its JSON file."""
     directory = _doc_dir(base_dir, doc_type, session)
     filename = sanitize_filename(doc_id)

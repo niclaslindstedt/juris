@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import date
 from pathlib import Path
 
 import click
@@ -35,16 +36,17 @@ COLLECTORS = {
 }
 
 
-def _parse_date(value: str | None) -> __import__("datetime").date | None:
+def _parse_date(value: str | None) -> date | None:
     if value is None:
         return None
-    from datetime import date
-
     return date.fromisoformat(value)
 
 
 @click.group()
-@click.option("--data-dir", type=click.Path(), default="data", help="Output directory for collected data.")
+@click.option(
+    "--data-dir", type=click.Path(), default="data",
+    help="Output directory for collected data.",
+)
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose logging.")
 @click.pass_context
 def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
@@ -59,13 +61,23 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
 
 @main.command()
 @click.argument("source", type=click.Choice(list(COLLECTORS.keys())))
-@click.option("--type", "doc_type", required=True, type=click.Choice([dt.value for dt in DocType]), help="Document type to collect.")
+@click.option(
+    "--type", "doc_type", required=True,
+    type=click.Choice([dt.value for dt in DocType]),
+    help="Document type to collect.",
+)
 @click.option("--session", default=None, help="Parliamentary session, e.g. 2024/25.")
 @click.option("--since", default=None, help="Collect documents from this date (YYYY-MM-DD).")
 @click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
 @click.option("--limit", default=None, type=int, help="Maximum number of documents to collect.")
-@click.option("--skip-existing/--no-skip-existing", default=True, help="Skip already collected documents.")
-@click.option("--skip-content/--no-skip-content", default=False, help="Skip fetching full text (faster, metadata only).")
+@click.option(
+    "--skip-existing/--no-skip-existing", default=True,
+    help="Skip already collected documents.",
+)
+@click.option(
+    "--skip-content/--no-skip-content", default=False,
+    help="Skip fetching full text (faster, metadata only).",
+)
 @click.pass_context
 def collect(
     ctx: click.Context,
@@ -86,6 +98,13 @@ def collect(
     collector_cls = COLLECTORS[source]
     collector = collector_cls()
 
+    if dt not in collector.supported_doc_types:
+        supported = ", ".join(t.value for t in collector.supported_doc_types)
+        raise click.UsageError(
+            f"Source '{source}' does not support type '{doc_type}'. "
+            f"Supported types: {supported}"
+        )
+
     state = load_state(data_dir, src, dt)
 
     async def _run() -> int:
@@ -100,7 +119,10 @@ def collect(
                 limit=limit,
                 skip_content=skip_content,
             ):
-                if skip_existing and document_exists(doc.doc_id, doc.doc_type, doc.session, data_dir):
+                exists = document_exists(
+                    doc.doc_id, doc.doc_type, doc.session, data_dir,
+                )
+                if skip_existing and exists:
                     skipped += 1
                     click.echo(f"  skip {doc.doc_id} (exists)")
                     continue

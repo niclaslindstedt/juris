@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import AsyncIterator
-from datetime import date, datetime
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, date, datetime
 from urllib.parse import quote
 
 import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id
+from juris.utils import build_doc_id
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def _parse_mod_reference(referat_list: list[str]) -> tuple[str, str | None]:
     return "", None
 
 
-_REFERENCE_PARSERS: dict[DocType, callable] = {
+_REFERENCE_PARSERS: dict[DocType, Callable[[list[str]], tuple[str, str | None]]] = {
     DocType.NJA: _parse_nja_reference,
     DocType.AD: _parse_ad_reference,
     DocType.HFD: _parse_hfd_reference,
@@ -118,21 +118,7 @@ class DomstolCollector(BaseCollector):
     supported_doc_types = list(_COURT_MAP.keys())
 
     def __init__(self, rate_limit: float = 0.5) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=BASE_URL,
-                timeout=30.0,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit, base_url=BASE_URL)
 
     async def _fetch_json(
         self, path: str, params: dict[str, str | int] | None = None
@@ -219,7 +205,7 @@ class DomstolCollector(BaseCollector):
             source=Source.DOMSTOL,
             source_id=source_id,
             source_url=f"{BASE_URL}/api/v1/publiceringar/{source_id}" if source_id else None,
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
 
@@ -266,9 +252,6 @@ class DomstolCollector(BaseCollector):
             if not data or not isinstance(data, list):
                 break
 
-            if not data:
-                break
-
             for pub in data:
                 if limit and count >= limit:
                     return
@@ -296,7 +279,9 @@ class DomstolCollector(BaseCollector):
 
             page += 1
 
-    async def get_document(self, source_id: str, doc_type: DocType | None = None) -> Document | None:
+    async def get_document(
+        self, source_id: str, doc_type: DocType | None = None,
+    ) -> Document | None:
         """Fetch a single publication by its UUID."""
         data = await self._fetch_json(f"/api/v1/publiceringar/{source_id}")
         if not data or not isinstance(data, dict):

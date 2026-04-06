@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
-import httpx
-
-from juris.collectors._cellar import PAGE_SIZE, eurlex_html_url, eurlex_url, sparql_query
+from juris.collectors._cellar import (
+    PAGE_SIZE,
+    binding_value,
+    build_sparql_date_filters,
+    eurlex_url,
+    fetch_eurlex_text,
+    sparql_query,
+)
 from juris.collectors.base import BaseCollector
 from juris.models import DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id, html_to_text
+from juris.utils import build_doc_id
 
 logger = logging.getLogger(__name__)
 
@@ -48,27 +53,6 @@ OFFSET {offset}
 """
 
 
-def _build_filters(
-    since: date | None = None,
-    until: date | None = None,
-) -> str:
-    """Build SPARQL FILTER clauses for date range."""
-    parts: list[str] = []
-    if since:
-        parts.append(f'FILTER(?date >= "{since.isoformat()}"^^xsd:date)')
-    if until:
-        parts.append(f'FILTER(?date <= "{until.isoformat()}"^^xsd:date)')
-    return "\n  ".join(parts)
-
-
-def _binding_value(row: dict[str, dict[str, str]], key: str) -> str:
-    """Extract a string value from a SPARQL result binding."""
-    binding = row.get(key)
-    if binding is None:
-        return ""
-    return binding.get("value", "")
-
-
 class CjeuCollector(BaseCollector):
     """Collects CJEU judgments from the EU CELLAR SPARQL endpoint."""
 
@@ -76,30 +60,17 @@ class CjeuCollector(BaseCollector):
     supported_doc_types = [DocType.CJEU]
 
     def __init__(self, rate_limit: float = 1.0) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=60.0,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit, timeout=60.0)
 
     def _parse_result(self, row: dict[str, dict[str, str]]) -> Document | None:
         """Map a SPARQL result row to a Document."""
-        celex = _binding_value(row, "celex")
+        celex = binding_value(row, "celex")
         if not celex:
             return None
 
-        title = _binding_value(row, "title") or celex
-        date_str = _binding_value(row, "date")
-        ecli = _binding_value(row, "ecli")
+        title = binding_value(row, "title") or celex
+        date_str = binding_value(row, "date")
+        ecli = binding_value(row, "ecli")
 
         try:
             doc_date = date.fromisoformat(date_str) if date_str else date.today()
@@ -122,23 +93,13 @@ class CjeuCollector(BaseCollector):
             source=Source.CURIA,
             source_id=celex,
             source_url=eurlex_url(celex),
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
         )
 
     async def _fetch_full_text(self, celex: str) -> str | None:
         """Fetch full text from EUR-Lex HTML page."""
         client = await self._get_client()
-        await self._limiter.wait()
-        # Try Swedish first, then English
-        for lang in ("SV", "EN"):
-            url = eurlex_html_url(celex, lang)
-            try:
-                resp = await client.get(url, follow_redirects=True)
-                if resp.status_code == 200 and len(resp.text) > 500:
-                    return html_to_text(resp.text)
-            except httpx.HTTPError:
-                continue
-        return None
+        return await fetch_eurlex_text(client, self._limiter, celex)
 
     async def collect(
         self,
@@ -163,7 +124,7 @@ class CjeuCollector(BaseCollector):
             except ValueError:
                 pass
 
-        filters = _build_filters(since, until)
+        filters = build_sparql_date_filters(since, until)
         client = await self._get_client()
         count = 0
         offset = 0
