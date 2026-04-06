@@ -148,6 +148,7 @@ class CjeuCollector(BaseCollector):
         since: date | None = None,
         until: date | None = None,
         limit: int | None = None,
+        skip_content: bool = False,
     ) -> AsyncIterator[Document]:
         """Yield CJEU judgments from the CELLAR SPARQL endpoint."""
         if doc_type != DocType.CJEU:
@@ -187,6 +188,11 @@ class CjeuCollector(BaseCollector):
                 doc = self._parse_result(row)
                 if not doc:
                     continue
+
+                if not skip_content and doc.source_id:
+                    text = await self._fetch_full_text(doc.source_id)
+                    if text:
+                        doc.text = text
 
                 yield doc
                 count += 1

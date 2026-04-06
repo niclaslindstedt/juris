@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class DocType(StrEnum):
@@ -47,6 +47,16 @@ class Source(StrEnum):
     HUDOC = "hudoc"
 
 
+_MIME_ALIASES: dict[str, str] = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
+    "html": "text/html",
+    "xml": "application/xml",
+    "txt": "text/plain",
+}
+
+
 class Attachment(BaseModel):
     """A file attachment (typically PDF)."""
 
@@ -55,6 +65,12 @@ class Attachment(BaseModel):
     mime_type: str | None = None
     size_bytes: int | None = None
     local_path: str | None = None  # Relative path to downloaded file
+
+    @model_validator(mode="after")
+    def _normalize_mime_type(self) -> Attachment:
+        if self.mime_type and self.mime_type in _MIME_ALIASES:
+            self.mime_type = _MIME_ALIASES[self.mime_type]
+        return self
 
 
 class Document(BaseModel):

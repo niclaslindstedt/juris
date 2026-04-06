@@ -98,6 +98,7 @@ def collect(
                 since=_parse_date(since),
                 until=_parse_date(until),
                 limit=limit,
+                skip_content=skip_content,
             ):
                 if skip_existing and document_exists(doc.doc_id, doc.doc_type, doc.session, data_dir):
                     skipped += 1

@@ -10,6 +10,31 @@ import yaml
 from juris.models import DocType, Document
 from juris.utils import sanitize_filename
 
+# Human-readable Swedish labels for document types (used in Markdown output)
+_TYPE_LABELS: dict[DocType, str] = {
+    DocType.PROP: "Proposition",
+    DocType.SOU: "SOU",
+    DocType.MOT: "Motion",
+    DocType.BET: "Betänkande",
+    DocType.DS: "Ds",
+    DocType.LAGR: "Lagrådsremiss",
+    DocType.DIR: "Kommittédirektiv",
+    DocType.SKR: "Skrivelse",
+    DocType.SFS: "SFS",
+    DocType.NJA: "NJA",
+    DocType.AD: "AD",
+    DocType.HFD: "HFD",
+    DocType.MOD: "MÖD",
+    DocType.PMOD: "PMÖD",
+    DocType.JO: "JO",
+    DocType.JK: "JK",
+    DocType.FORESKRIFT: "Föreskrift",
+    DocType.EU_REG: "EU-förordning",
+    DocType.EU_DIR: "EU-direktiv",
+    DocType.CJEU: "EU-domstolen",
+    DocType.ECHR: "Europadomstolen",
+}
+
 
 def _doc_dir(base_dir: Path, doc_type: DocType, session: str | None) -> Path:
     """Derive the directory for a document type and session."""
@@ -39,29 +64,35 @@ def save_document(doc: Document, base_dir: Path) -> Path:
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     # Markdown — YAML frontmatter + text body
-    frontmatter = {
+    frontmatter: dict[str, str | int] = {
         "doc_id": doc.doc_id,
         "doc_type": doc.doc_type.value,
         "title": doc.title,
+        "designation": doc.designation,
         "date": str(doc.date),
         "source": doc.source.value,
     }
-    if doc.department:
-        frontmatter["department"] = doc.department
-    if doc.source_url:
-        frontmatter["source_url"] = doc.source_url
     if doc.session:
         frontmatter["session"] = doc.session
+    if doc.department:
+        frontmatter["department"] = doc.department
+    if doc.committee:
+        frontmatter["committee"] = doc.committee
+    if doc.summary:
+        frontmatter["summary"] = doc.summary[:200]
+    if doc.source_url:
+        frontmatter["source_url"] = doc.source_url
+    if doc.text:
+        frontmatter["text_length"] = len(doc.text)
 
     fm_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False, sort_keys=False)
     body = doc.text or doc.summary or ""
-    type_label = doc.doc_type.value.upper()
-    if doc.doc_type == DocType.PROP:
-        type_label = "Proposition"
-    elif doc.doc_type == DocType.SOU:
-        type_label = "SOU"
+    type_label = _TYPE_LABELS.get(doc.doc_type, doc.doc_type.value.upper())
 
-    designation = f"{type_label} {doc.session}:{doc.designation}" if doc.session else doc.designation
+    if doc.session:
+        designation = f"{type_label} {doc.session}:{doc.designation}"
+    else:
+        designation = doc.designation
 
     lines = [
         "---",

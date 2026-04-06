@@ -149,6 +149,7 @@ class EurLexCollector(BaseCollector):
         since: date | None = None,
         until: date | None = None,
         limit: int | None = None,
+        skip_content: bool = False,
     ) -> AsyncIterator[Document]:
         """Yield EU regulations or directives from the CELLAR SPARQL endpoint."""
         if doc_type not in self.supported_doc_types:
@@ -191,6 +192,11 @@ class EurLexCollector(BaseCollector):
                 doc = self._parse_result(row, doc_type)
                 if not doc:
                     continue
+
+                if not skip_content and doc.source_id:
+                    text = await self._fetch_full_text(doc.source_id)
+                    if text:
+                        doc.text = text
 
                 yield doc
                 count += 1

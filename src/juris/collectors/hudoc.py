@@ -10,7 +10,7 @@ import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id
+from juris.utils import RateLimiter, build_doc_id, html_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,33 @@ class HudocCollector(BaseCollector):
             fetched_at=datetime.now(),
         )
 
+    async def _fetch_full_text(
+        self, item_id: str,
+    ) -> tuple[str | None, str | None]:
+        """Try to fetch the full judgment HTML from the HUDOC conversion endpoint.
+
+        HUDOC does not expose a public REST endpoint for full judgment text;
+        the /app/conversion/ endpoint is often unavailable. When it fails we
+        fall back to metadata-only collection. Returns (text, html) tuple.
+        """
+        await self._limiter.wait()
+        client = await self._get_client()
+        url = (
+            "https://hudoc.echr.coe.int"
+            f"/app/conversion/docx/html/body/{item_id}"
+        )
+        try:
+            resp = await client.get(url)
+            if resp.status_code == 200 and len(resp.text) > 200:
+                raw_html = resp.text
+                text = html_to_text(raw_html)
+                return text, raw_html
+        except httpx.HTTPError as e:
+            logger.debug(
+                "HUDOC full text unavailable for %s: %s", item_id, e,
+            )
+        return None, None
+
     async def collect(
         self,
         doc_type: DocType,
@@ -149,6 +176,7 @@ class HudocCollector(BaseCollector):
         since: date | None = None,
         until: date | None = None,
         limit: int | None = None,
+        skip_content: bool = False,
     ) -> AsyncIterator[Document]:
         """Yield ECtHR judgments against Sweden from the HUDOC API."""
         if doc_type != DocType.ECHR:
@@ -181,6 +209,13 @@ class HudocCollector(BaseCollector):
                 doc = self._parse_result(item)
                 if not doc:
                     continue
+
+                if not skip_content and doc.source_id:
+                    text, html = await self._fetch_full_text(doc.source_id)
+                    if text:
+                        doc.text = text
+                    if html:
+                        doc.html = html
 
                 yield doc
                 count += 1
