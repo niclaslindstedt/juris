@@ -28,6 +28,10 @@ class DocType(StrEnum):
     JO = "jo"  # Justitieombudsmannens beslut
     JK = "jk"  # Justitiekanslerns beslut
     FORESKRIFT = "foreskrift"  # Myndighetsföreskrifter och allmänna råd
+    EU_REG = "eu_reg"  # EU regulations (förordningar)
+    EU_DIR = "eu_dir"  # EU directives (direktiv)
+    CJEU = "cjeu"  # CJEU judgments (EU-domstolen)
+    ECHR = "echr"  # ECtHR judgments (Europadomstolen)
 
 
 class Source(StrEnum):
@@ -38,6 +42,9 @@ class Source(StrEnum):
     DOMSTOL = "domstol"
     JO_JK = "jo_jk"
     LAGRUMMET = "lagrummet"
+    EUR_LEX = "eur_lex"
+    CURIA = "curia"
+    HUDOC = "hudoc"
 
 
 class Attachment(BaseModel):

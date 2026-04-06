@@ -9,7 +9,10 @@ from pathlib import Path
 
 import click
 
+from juris.collectors.curia import CjeuCollector
 from juris.collectors.domstol import DomstolCollector
+from juris.collectors.eurlex import EurLexCollector
+from juris.collectors.hudoc import HudocCollector
 from juris.collectors.jo_jk import JoJkCollector
 from juris.collectors.lagrummet import LagrummetCollector
 from juris.collectors.regeringen import RegeringenCollector
@@ -26,6 +29,9 @@ COLLECTORS = {
     "domstol": DomstolCollector,
     "jo_jk": JoJkCollector,
     "lagrummet": LagrummetCollector,
+    "eur_lex": EurLexCollector,
+    "curia": CjeuCollector,
+    "hudoc": HudocCollector,
 }
 
 
