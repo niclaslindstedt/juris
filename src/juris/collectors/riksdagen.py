@@ -138,6 +138,16 @@ class RiksdagenCollector(BaseCollector):
                         )
                     )
 
+        # Build a summary from undertitel or first substantial text paragraph
+        summary = item.get("undertitel") or None
+        if not summary and text:
+            for paragraph in re.split(r"\n{2,}", text):
+                stripped = paragraph.strip()
+                # Skip short lines (headings, metadata) and the title itself
+                if len(stripped) > 80 and stripped != item.get("titel", ""):
+                    summary = stripped[:500]
+                    break
+
         # Extract committee name for committee reports (betänkanden)
         committee = _extract_committee(designation) if doc_type == DocType.BET else None
 
@@ -147,7 +157,7 @@ class RiksdagenCollector(BaseCollector):
             designation=designation,
             session=session,
             title=item.get("titel", ""),
-            summary=item.get("undertitel") or None,
+            summary=summary,
             text=text,
             html=html,
             date=doc_date,

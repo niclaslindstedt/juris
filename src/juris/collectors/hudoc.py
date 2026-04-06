@@ -137,28 +137,49 @@ class HudocCollector(BaseCollector):
     async def _fetch_full_text(
         self, item_id: str,
     ) -> tuple[str | None, str | None]:
-        """Try to fetch the full judgment HTML from the HUDOC conversion endpoint.
+        """Try to fetch the full judgment text from HUDOC.
 
-        HUDOC does not expose a public REST endpoint for full judgment text;
-        the /app/conversion/ endpoint is often unavailable. When it fails we
-        fall back to metadata-only collection. Returns (text, html) tuple.
+        Attempts multiple endpoints in order:
+        1. /app/conversion/docx/html/body/ (HTML conversion)
+        2. /app/conversion/pdf/ (PDF, extract text)
+
+        Returns (text, html) tuple, or (None, None) if all fail.
         """
-        await self._limiter.wait()
         client = await self._get_client()
-        url = (
+
+        # Strategy 1: HTML conversion endpoint
+        await self._limiter.wait()
+        html_url = (
             "https://hudoc.echr.coe.int"
             f"/app/conversion/docx/html/body/{item_id}"
         )
         try:
-            resp = await client.get(url)
+            resp = await client.get(html_url)
             if resp.status_code == 200 and len(resp.text) > 200:
                 raw_html = resp.text
                 text = html_to_text(raw_html)
                 return text, raw_html
+        except httpx.HTTPError:
+            pass
+
+        # Strategy 2: PDF conversion endpoint
+        await self._limiter.wait()
+        pdf_url = (
+            "https://hudoc.echr.coe.int"
+            f"/app/conversion/pdf/?library=ECHR&id={item_id}"
+        )
+        try:
+            resp = await client.get(pdf_url)
+            if resp.status_code == 200 and len(resp.content) > 500:
+                from juris.pdf import extract_text_from_bytes
+                text = extract_text_from_bytes(resp.content)
+                if text and len(text) > 100:
+                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(text), item_id)
+                    return text, None
         except httpx.HTTPError as e:
-            logger.debug(
-                "HUDOC full text unavailable for %s: %s", item_id, e,
-            )
+            logger.debug("HUDOC PDF unavailable for %s: %s", item_id, e)
+
+        logger.debug("HUDOC full text unavailable for %s", item_id)
         return None, None
 
     async def collect(
@@ -207,7 +228,9 @@ class HudocCollector(BaseCollector):
 
                 # Disambiguate when multiple HUDOC items share the same appno
                 if doc.doc_id in seen_doc_ids and doc.source_id:
-                    doc.designation = f"{doc.designation}/{doc.source_id}"
+                    # Use last 6 chars of item_id for compact disambiguation
+                    suffix = doc.source_id[-6:] if len(doc.source_id) > 6 else doc.source_id
+                    doc.designation = f"{doc.designation}-{suffix}"
                     doc.doc_id = build_doc_id(DocType.ECHR, doc.designation, doc.session)
                 seen_doc_ids.add(doc.doc_id)
 
