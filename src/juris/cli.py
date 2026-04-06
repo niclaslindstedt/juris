@@ -22,6 +22,8 @@ from juris.models import DocType, Source
 from juris.state import load_state, save_state
 from juris.storage import document_exists, save_document
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_DATA_DIR = Path("data")
 
 COLLECTORS = {
@@ -46,6 +48,25 @@ def _build_doc_type_providers() -> dict[str, list[str]]:
 
 
 DOC_TYPE_PROVIDERS = _build_doc_type_providers()
+
+# Best provider for each document type when multiple sources overlap.
+# Selection criteria:
+#   - Structured API > web scraping (reliability)
+#   - Richer metadata and faster collection rate
+#
+# Riksdagen (JSON API) beats Regeringen (scraping) for: prop, sou, dir, skr.
+# Regeringen is kept exclusively for ds and lagr (no other source has them).
+PREFERRED_PROVIDERS: dict[str, str] = {
+    dt: providers[0] for dt, providers in DOC_TYPE_PROVIDERS.items()
+    if len(providers) == 1
+}
+# Explicit overrides for doc types with multiple providers
+PREFERRED_PROVIDERS.update({
+    "prop": "riksdagen",  # Structured API, reliable beteckning field
+    "sou": "riksdagen",   # Structured API, faster pagination
+    "dir": "riksdagen",   # Structured API, built-in session filtering
+    "skr": "riksdagen",   # Structured API, single request per doc
+})
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -175,6 +196,10 @@ def collect(
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
+@click.option(
+    "--all-providers", is_flag=True,
+    help="Use all providers instead of only the preferred one.",
+)
 @click.pass_context
 def collect_type(
     ctx: click.Context,
@@ -186,23 +211,40 @@ def collect_type(
     skip_existing: bool,
     skip_content: bool,
     dry_run: bool,
+    all_providers: bool,
 ) -> None:
-    """Collect a document type from all supporting providers."""
+    """Collect a document type using the best provider.
+
+    By default only the preferred (highest quality) provider is used.
+    Pass --all-providers to collect from every provider that supports the type.
+    """
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
 
-    providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    if all_providers:
+        providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    else:
+        preferred = PREFERRED_PROVIDERS.get(doc_type)
+        providers = [preferred] if preferred else []
+
     if not providers:
         raise click.UsageError(f"No providers found for document type '{doc_type}'.")
 
+    all_available = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    skipped = [p for p in all_available if p not in providers]
+
     if dry_run:
         click.echo(f"Providers for '{doc_type}': {', '.join(providers)}")
+        if skipped:
+            click.echo(f"Skipped (lower quality): {', '.join(skipped)}")
         return
 
     click.echo(
         f"Collecting {doc_type} from {len(providers)} provider(s): "
         f"{', '.join(providers)}"
     )
+    if skipped:
+        click.echo(f"  (skipped: {', '.join(skipped)} — use --all-providers to include)")
 
     async def _run_all() -> tuple[int, int]:
         grand_collected = 0
@@ -257,6 +299,122 @@ def collect_type(
     click.echo(
         f"\nTotal: {total_collected} collected, {total_skipped} skipped "
         f"across {len(providers)} provider(s)"
+    )
+
+
+@main.command("collect-all")
+@click.option("--since", default=None, help="Collect documents from this date (YYYY-MM-DD).")
+@click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
+@click.option("--limit", default=None, type=int, help="Max documents per doc type.")
+@click.option(
+    "--skip-existing/--no-skip-existing", default=True,
+    help="Skip already collected documents.",
+)
+@click.option(
+    "--skip-content/--no-skip-content", default=False,
+    help="Skip fetching full text (faster, metadata only).",
+)
+@click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
+@click.pass_context
+def collect_all(
+    ctx: click.Context,
+    since: str | None,
+    until: str | None,
+    limit: int | None,
+    skip_existing: bool,
+    skip_content: bool,
+    dry_run: bool,
+) -> None:
+    """Collect all document types from all providers (best source per type).
+
+    When multiple providers support the same document type, only the
+    best provider is used.  Selection prefers structured APIs over web
+    scraping for reliability and speed.
+
+    \b
+    Preferred providers for overlapping types:
+      prop, sou, dir, skr  ->  riksdagen  (JSON API, faster, reliable)
+      ds, lagr             ->  regeringen (sole provider)
+    """
+    data_dir: Path = ctx.obj["data_dir"]
+
+    # Build the plan: list of (doc_type, source_name) pairs
+    plan: list[tuple[DocType, str]] = []
+    for dt in DocType:
+        source_name = PREFERRED_PROVIDERS.get(dt.value)
+        if source_name:
+            plan.append((dt, source_name))
+        else:
+            logger.warning("No preferred provider for %s, skipping", dt.value)
+
+    if dry_run:
+        click.echo("Collection plan (best provider per document type):\n")
+        for dt, source_name in plan:
+            providers = DOC_TYPE_PROVIDERS.get(dt.value, [])
+            alt = [p for p in providers if p != source_name]
+            alt_str = f"  (skipped: {', '.join(alt)})" if alt else ""
+            click.echo(f"  {dt.value:12s} <- {source_name}{alt_str}")
+        click.echo(f"\n{len(plan)} document types across "
+                    f"{len({s for _, s in plan})} providers")
+        return
+
+    click.echo(
+        f"Collecting {len(plan)} document types from "
+        f"{len({s for _, s in plan})} providers"
+    )
+
+    async def _run_all() -> tuple[int, int]:
+        grand_collected = 0
+        grand_skipped = 0
+
+        for dt, source_name in plan:
+            src = Source(source_name)
+            collector = COLLECTORS[source_name]()
+            state = load_state(data_dir, src, dt)
+
+            click.echo(f"\n--- {dt.value} <- {source_name} ---")
+            collected = 0
+            skipped = 0
+            try:
+                async for doc in collector.collect(
+                    dt,
+                    since=_parse_date(since),
+                    until=_parse_date(until),
+                    limit=limit,
+                    skip_content=skip_content,
+                ):
+                    exists = document_exists(
+                        doc.doc_id, doc.doc_type, doc.session, data_dir,
+                    )
+                    if skip_existing and exists:
+                        skipped += 1
+                        click.echo(f"  skip {doc.doc_id} (exists)")
+                        continue
+
+                    if not skip_content:
+                        doc = await collector.download_attachments(doc, data_dir)
+
+                    path = save_document(doc, data_dir)
+                    collected += 1
+                    click.echo(f"  saved {doc.doc_id} -> {path}")
+
+                    state.total_collected += 1
+                    if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
+                        state.last_fetched_date = str(doc.date)
+            finally:
+                await collector.close()
+
+            save_state(state, data_dir)
+            click.echo(f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped")
+            grand_collected += collected
+            grand_skipped += skipped
+
+        return grand_collected, grand_skipped
+
+    total_collected, total_skipped = asyncio.run(_run_all())
+    click.echo(
+        f"\nTotal: {total_collected} collected, {total_skipped} skipped "
+        f"across {len(plan)} document types"
     )
 
 
