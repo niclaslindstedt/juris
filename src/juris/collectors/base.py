@@ -135,8 +135,9 @@ class BaseCollector(ABC):
                         attachment.filename,
                     )
 
-        # Only overwrite text if the document didn't already have content
-        if primary_text and not doc.text:
-            doc.text = primary_text
+        # Prefer PDF text when it is substantially richer than scraped page text
+        if primary_text:
+            if not doc.text or len(primary_text) > len(doc.text) * 2:
+                doc.text = primary_text
 
         return doc

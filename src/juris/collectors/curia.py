@@ -29,8 +29,7 @@ SELECT DISTINCT ?celex ?title ?date ?ecli WHERE {{
   ?work cdm:work_date_document ?date .
   ?work cdm:work_has_resource-type
     <http://publications.europa.eu/resource/authority/resource-type/JUDG> .
-  ?work cdm:case-law_delivered-by-court
-    <http://publications.europa.eu/resource/authority/court/CJ> .
+  FILTER(CONTAINS(STR(?celex), "CJ"))
   {filters}
   OPTIONAL {{
     ?work cdm:work_has_expression ?expr .
@@ -73,8 +72,13 @@ class CjeuCollector(BaseCollector):
         ecli = binding_value(row, "ecli")
 
         try:
-            doc_date = date.fromisoformat(date_str) if date_str else date.today()
+            if date_str:
+                doc_date = date.fromisoformat(date_str)
+            else:
+                logger.warning("No date for CELEX %s, using today", celex)
+                doc_date = date.today()
         except ValueError:
+            logger.warning("Could not parse date '%s' for CELEX %s, using today", date_str, celex)
             doc_date = date.today()
 
         session = str(doc_date.year)

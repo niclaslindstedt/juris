@@ -34,6 +34,7 @@ SELECT DISTINCT ?celex ?title ?date WHERE {{
   ?work cdm:resource_legal_id_celex ?celex .
   ?work cdm:work_date_document ?date .
   ?work cdm:work_has_resource-type <{resource_type}> .
+  FILTER(!CONTAINS(STR(?celex), "R("))
   {filters}
   OPTIONAL {{
     ?work cdm:work_has_expression ?expr .
@@ -74,8 +75,13 @@ class EurLexCollector(BaseCollector):
         date_str = binding_value(row, "date")
 
         try:
-            doc_date = date.fromisoformat(date_str) if date_str else date.today()
+            if date_str:
+                doc_date = date.fromisoformat(date_str)
+            else:
+                logger.warning("No date for CELEX %s, using today", celex)
+                doc_date = date.today()
         except ValueError:
+            logger.warning("Could not parse date '%s' for CELEX %s, using today", date_str, celex)
             doc_date = date.today()
 
         session = str(doc_date.year)

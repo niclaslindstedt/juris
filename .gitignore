@@ -8,5 +8,5 @@ build/
 .ruff_cache/
 .pytest_cache/
 
-# Collection state (tracked separately)
-data/.state/
+# Collected data (generated at runtime)
+data/
