@@ -196,6 +196,10 @@ def collect(
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
+@click.option(
+    "--all-providers", is_flag=True,
+    help="Use all providers instead of only the preferred one.",
+)
 @click.pass_context
 def collect_type(
     ctx: click.Context,
@@ -207,23 +211,40 @@ def collect_type(
     skip_existing: bool,
     skip_content: bool,
     dry_run: bool,
+    all_providers: bool,
 ) -> None:
-    """Collect a document type from all supporting providers."""
+    """Collect a document type using the best provider.
+
+    By default only the preferred (highest quality) provider is used.
+    Pass --all-providers to collect from every provider that supports the type.
+    """
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
 
-    providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    if all_providers:
+        providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    else:
+        preferred = PREFERRED_PROVIDERS.get(doc_type)
+        providers = [preferred] if preferred else []
+
     if not providers:
         raise click.UsageError(f"No providers found for document type '{doc_type}'.")
 
+    all_available = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    skipped = [p for p in all_available if p not in providers]
+
     if dry_run:
         click.echo(f"Providers for '{doc_type}': {', '.join(providers)}")
+        if skipped:
+            click.echo(f"Skipped (lower quality): {', '.join(skipped)}")
         return
 
     click.echo(
         f"Collecting {doc_type} from {len(providers)} provider(s): "
         f"{', '.join(providers)}"
     )
+    if skipped:
+        click.echo(f"  (skipped: {', '.join(skipped)} — use --all-providers to include)")
 
     async def _run_all() -> tuple[int, int]:
         grand_collected = 0
