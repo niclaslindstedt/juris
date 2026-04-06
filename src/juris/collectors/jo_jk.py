@@ -13,7 +13,7 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from urllib.parse import urlencode, urljoin
 
 import httpx
@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id, html_to_text
+from juris.utils import build_doc_id, extract_page_content
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,9 @@ _JK_PAGE_SIZE = 20
 # Regex patterns for metadata extraction from detail pages
 _DNR_RE = re.compile(r"Diarienummer[:\s]+(\d{1,5}[–\-]\d{2,4})")
 _DATE_RE = re.compile(r"Beslutsdatum[:\s]+(\d{4}-\d{2}-\d{2})")
-_DECISION_MAKER_RE = re.compile(r"Beslutsfattare[:\s]+(.+?)(?=\s+Ladda|\s+Beslutsdatum|\s+Diarienummer|$)")
+_DECISION_MAKER_RE = re.compile(
+    r"Beslutsfattare[:\s]+(.+?)(?=\s+Ladda|\s+Beslutsdatum|\s+Diarienummer|$)"
+)
 
 # XML namespace used in sitemaps
 _SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
@@ -50,21 +52,7 @@ class JoJkCollector(BaseCollector):
     supported_doc_types = [DocType.JO, DocType.JK]
 
     def __init__(self, rate_limit: float = 1.0) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=30.0,
-                follow_redirects=True,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit, follow_redirects=True)
 
     async def _fetch_html(self, url: str) -> str | None:
         """Fetch a URL and return the response text, or None on error."""
@@ -278,7 +266,7 @@ class JoJkCollector(BaseCollector):
         attachments = self._extract_attachments(soup, base_url)
 
         # Extract main content
-        summary_text, summary_html = self._extract_content(soup)
+        summary_text, summary_html = extract_page_content(soup)
 
         source_id = page_url.replace(base_url, "")
         doc_id = build_doc_id(doc_type, designation, session)
@@ -297,29 +285,9 @@ class JoJkCollector(BaseCollector):
             source=Source.JO_JK,
             source_id=source_id,
             source_url=page_url,
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
-
-    @staticmethod
-    def _extract_content(soup: BeautifulSoup) -> tuple[str | None, str | None]:
-        """Extract main content text and HTML from the page."""
-        content_el = (
-            soup.find("article")
-            or soup.find("div", attrs={"role": "main"})
-            or soup.find("main")
-            or soup.find("div", class_=re.compile(r"content|entry|body", re.I))
-        )
-        if content_el and isinstance(content_el, Tag):
-            for unwanted in content_el.find_all(["nav", "header", "aside", "footer"]):
-                unwanted.decompose()
-            html_str = str(content_el)
-            return html_to_text(html_str), html_str
-        body = soup.find("body")
-        if body and isinstance(body, Tag):
-            html_str = str(body)
-            return html_to_text(html_str), html_str
-        return None, None
 
     @staticmethod
     def _extract_attachments(soup: BeautifulSoup, base_url: str) -> list[Attachment]:

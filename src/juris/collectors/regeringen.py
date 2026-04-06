@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from urllib.parse import urlencode, urljoin
 
 import httpx
@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id, html_to_text
+from juris.utils import build_doc_id, extract_page_content, parse_swedish_date
 
 logger = logging.getLogger(__name__)
 
@@ -32,22 +32,6 @@ _DOCTYPE_PATHS: dict[DocType, str] = {
 # Reverse lookup: URL path segment -> DocType
 _PATH_TO_DOCTYPE: dict[str, DocType] = {v: k for k, v in _DOCTYPE_PATHS.items()}
 
-# Swedish month names for date parsing
-_SWEDISH_MONTHS: dict[str, int] = {
-    "januari": 1,
-    "februari": 2,
-    "mars": 3,
-    "april": 4,
-    "maj": 5,
-    "juni": 6,
-    "juli": 7,
-    "augusti": 8,
-    "september": 9,
-    "oktober": 10,
-    "november": 11,
-    "december": 12,
-}
-
 # Regex patterns for extracting designation and session from document text.
 # Group 1 = session/year, Group 2 = designation number.
 _DESIGNATION_PATTERNS: dict[DocType, re.Pattern[str]] = {
@@ -59,21 +43,6 @@ _DESIGNATION_PATTERNS: dict[DocType, re.Pattern[str]] = {
 }
 
 PAGE_SIZE = 10  # Regeringen.se shows 10 results per page
-
-
-def _parse_swedish_date(text: str) -> date | None:
-    """Parse a Swedish date string like '02 april 2026' into a date object."""
-    m = re.search(r"(\d{1,2})\s+(\w+)\s+(\d{4})", text)
-    if not m:
-        return None
-    day, month_name, year = int(m.group(1)), m.group(2).lower(), int(m.group(3))
-    month = _SWEDISH_MONTHS.get(month_name)
-    if not month:
-        return None
-    try:
-        return date(year, month, day)
-    except ValueError:
-        return None
 
 
 def _parse_designation(
@@ -110,21 +79,7 @@ class RegeringenCollector(BaseCollector):
     supported_doc_types = list(_DOCTYPE_PATHS.keys())
 
     def __init__(self, rate_limit: float = 1.0) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=30.0,
-                follow_redirects=True,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit, follow_redirects=True)
 
     async def _fetch_html(self, url: str) -> str | None:
         """Fetch a URL and return the HTML text, or None on error."""
@@ -203,7 +158,7 @@ class RegeringenCollector(BaseCollector):
         doc_date: date | None = None
         date_match = re.search(r"Publicerad\s+(\d{1,2}\s+\w+\s+\d{4})", page_text)
         if date_match:
-            doc_date = _parse_swedish_date(date_match.group(1))
+            doc_date = parse_swedish_date(date_match.group(1))
         if not doc_date:
             doc_date = date.today()
 
@@ -213,28 +168,8 @@ class RegeringenCollector(BaseCollector):
         if dept_link and isinstance(dept_link, Tag):
             department = dept_link.get_text(strip=True)
 
-        # Summary: extract text from the main content area.
-        # Look for the main content section — typically an <article> or
-        # a div with role=main or id containing "content".
-        summary_text: str | None = None
-        summary_html: str | None = None
-        content_el = (
-            soup.find("article")
-            or soup.find("div", attrs={"role": "main"})
-            or soup.find("main")
-        )
-        if content_el and isinstance(content_el, Tag):
-            # Remove navigation, header, sidebar elements from content
-            for unwanted in content_el.find_all(["nav", "header", "aside", "footer"]):
-                unwanted.decompose()
-            summary_html = str(content_el)
-            summary_text = html_to_text(summary_html)
-        else:
-            # Fallback: use the whole body
-            body = soup.find("body")
-            if body and isinstance(body, Tag):
-                summary_html = str(body)
-                summary_text = html_to_text(summary_html)
+        # Extract main content
+        summary_text, summary_html = extract_page_content(soup)
 
         # PDF attachments: links ending in .pdf
         attachments: list[Attachment] = []
@@ -285,7 +220,7 @@ class RegeringenCollector(BaseCollector):
             source=Source.REGERINGEN,
             source_id=source_id,
             source_url=page_url,
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
 

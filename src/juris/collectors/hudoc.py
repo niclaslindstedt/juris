@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import DocType, Document, Source
-from juris.utils import RateLimiter, build_doc_id, html_to_text
+from juris.utils import build_doc_id, html_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +49,7 @@ class HudocCollector(BaseCollector):
     supported_doc_types = [DocType.ECHR]
 
     def __init__(self, rate_limit: float = 1.0) -> None:
-        self._limiter = RateLimiter(min_interval=rate_limit)
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=30.0,
-                headers={"User-Agent": "juris/0.1.0 (Swedish law data collector)"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        super().__init__(rate_limit=rate_limit)
 
     async def _search(
         self, query: str, start: int = 0, length: int = PAGE_SIZE
@@ -138,7 +125,7 @@ class HudocCollector(BaseCollector):
             source=Source.HUDOC,
             source_id=item_id,
             source_url=f"https://hudoc.echr.coe.int/eng?i={item_id}",
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(tz=UTC),
         )
 
     async def _fetch_full_text(

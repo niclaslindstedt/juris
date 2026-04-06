@@ -17,12 +17,46 @@ from juris.utils import RateLimiter
 
 logger = logging.getLogger(__name__)
 
+USER_AGENT = "juris/0.1.0 (Swedish law data collector)"
+
 
 class BaseCollector(ABC):
     """Base class for all data source collectors."""
 
     source: Source
     supported_doc_types: list[DocType]
+    _limiter: RateLimiter
+
+    def __init__(
+        self,
+        rate_limit: float = 0.5,
+        timeout: float = 30.0,
+        follow_redirects: bool = False,
+        base_url: str = "",
+    ) -> None:
+        self._limiter = RateLimiter(min_interval=rate_limit)
+        self._client: httpx.AsyncClient | None = None
+        self._timeout = timeout
+        self._follow_redirects = follow_redirects
+        self._base_url = base_url
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Return the HTTP client (creating it if needed)."""
+        if self._client is None or self._client.is_closed:
+            kwargs: dict = {
+                "timeout": self._timeout,
+                "headers": {"User-Agent": USER_AGENT},
+                "follow_redirects": self._follow_redirects,
+            }
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            self._client = httpx.AsyncClient(**kwargs)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     @abstractmethod
     def collect(
@@ -41,16 +75,6 @@ class BaseCollector(ABC):
     @abstractmethod
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single document by its source-specific ID."""
-        ...
-
-    @abstractmethod
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Return the HTTP client (creating it if needed)."""
-        ...
-
-    @abstractmethod
-    async def close(self) -> None:
-        """Close the HTTP client."""
         ...
 
     # ------------------------------------------------------------------
@@ -86,8 +110,7 @@ class BaseCollector(ABC):
         if not pdf_attachments:
             return doc
 
-        # Get the rate limiter — subclasses store it as _limiter
-        limiter: RateLimiter = getattr(self, "_limiter", RateLimiter())
+        limiter = self._limiter
 
         attach_dir = _doc_dir(base_dir, doc.doc_type, doc.session) / "attachments"
         primary_text: str | None = None
