@@ -27,6 +27,7 @@ class DocType(StrEnum):
     PMOD = "pmod"  # Patent- och marknadsöverdomstolens avgöranden
     JO = "jo"  # Justitieombudsmannens beslut
     JK = "jk"  # Justitiekanslerns beslut
+    FORESKRIFT = "foreskrift"  # Myndighetsföreskrifter och allmänna råd
 
 
 class Source(StrEnum):
@@ -36,6 +37,7 @@ class Source(StrEnum):
     REGERINGEN = "regeringen"
     DOMSTOL = "domstol"
     JO_JK = "jo_jk"
+    LAGRUMMET = "lagrummet"
 
 
 class Attachment(BaseModel):
