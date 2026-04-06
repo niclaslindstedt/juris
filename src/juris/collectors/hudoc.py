@@ -90,18 +90,24 @@ class HudocCollector(BaseCollector):
 
         # Parse judgment date (format: "2023-01-15T00:00:00" or similar)
         try:
-            doc_date = (
-                date.fromisoformat(judgment_date_str[:10])
-                if judgment_date_str
-                else date.today()
-            )
+            if judgment_date_str:
+                doc_date = date.fromisoformat(judgment_date_str[:10])
+            else:
+                logger.warning("No judgment date for %s, using today", item_id)
+                doc_date = date.today()
         except ValueError:
+            logger.warning(
+                "Could not parse date '%s' for %s, using today", judgment_date_str, item_id,
+            )
             doc_date = date.today()
 
         session = str(doc_date.year)
 
-        # Use application number as designation, fallback to itemid
-        designation = appno.split(";")[0].strip() if appno else item_id
+        # Use application number as designation, fallback to itemid.
+        # Multiple HUDOC items can share the same appno (e.g. chamber vs
+        # grand chamber), so append a short itemid suffix to disambiguate.
+        base_appno = appno.split(";")[0].strip() if appno else ""
+        designation = base_appno or item_id
 
         doc_id = build_doc_id(DocType.ECHR, designation, session)
 
@@ -182,6 +188,8 @@ class HudocCollector(BaseCollector):
         count = 0
         start = 0
 
+        seen_doc_ids: set[str] = set()
+
         while True:
             logger.info("HUDOC search start=%d", start)
             results = await self._search(query, start=start, length=PAGE_SIZE)
@@ -196,6 +204,12 @@ class HudocCollector(BaseCollector):
                 doc = self._parse_result(item)
                 if not doc:
                     continue
+
+                # Disambiguate when multiple HUDOC items share the same appno
+                if doc.doc_id in seen_doc_ids and doc.source_id:
+                    doc.designation = f"{doc.designation}/{doc.source_id}"
+                    doc.doc_id = build_doc_id(DocType.ECHR, doc.designation, doc.session)
+                seen_doc_ids.add(doc.doc_id)
 
                 if not skip_content and doc.source_id:
                     text, html = await self._fetch_full_text(doc.source_id)

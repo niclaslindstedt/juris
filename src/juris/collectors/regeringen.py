@@ -160,6 +160,7 @@ class RegeringenCollector(BaseCollector):
         if date_match:
             doc_date = parse_swedish_date(date_match.group(1))
         if not doc_date:
+            logger.warning("Could not parse date from %s, using today", page_url)
             doc_date = date.today()
 
         # Department: links to /tx/ paths
@@ -170,6 +171,15 @@ class RegeringenCollector(BaseCollector):
 
         # Extract main content
         summary_text, summary_html = extract_page_content(soup)
+
+        # Build a clean summary from the first substantial paragraph
+        clean_summary: str | None = None
+        if summary_text:
+            for paragraph in re.split(r"\n{2,}", summary_text):
+                stripped = paragraph.strip()
+                if len(stripped) > 60:
+                    clean_summary = stripped[:500]
+                    break
 
         # PDF attachments: links ending in .pdf
         attachments: list[Attachment] = []
@@ -212,7 +222,7 @@ class RegeringenCollector(BaseCollector):
             designation=designation,
             session=session,
             title=title,
-            summary=summary_text[:500] if summary_text else None,
+            summary=clean_summary,
             text=summary_text,
             html=summary_html,
             date=doc_date,

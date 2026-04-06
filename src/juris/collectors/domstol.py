@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, date, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -13,6 +14,22 @@ import httpx
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
 from juris.utils import build_doc_id
+
+
+def _strip_court_header(text: str) -> str:
+    """Remove the standard court letterhead from the start of extracted PDF text.
+
+    Matches the block from "Dok.Id" through "Sida N (M)" that Swedish courts
+    embed in every PDF (address, phone, opening hours, etc.).
+    """
+    m = re.match(
+        r"Dok\.Id\s+\d+\s.*?Sida\s+\d+\s*\(\d+\)\s*",
+        text,
+        re.DOTALL,
+    )
+    if m:
+        return text[m.end():].lstrip()
+    return text
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +181,7 @@ class DomstolCollector(BaseCollector):
         try:
             doc_date = date.fromisoformat(avgorandedatum) if avgorandedatum else date.today()
         except ValueError:
+            logger.warning("Could not parse date '%s', using today", avgorandedatum)
             doc_date = date.today()
 
         title = pub.get("benamning", "").strip()
@@ -278,6 +296,13 @@ class DomstolCollector(BaseCollector):
                 break
 
             page += 1
+
+    async def download_attachments(self, doc: Document, base_dir: Path) -> Document:
+        """Download attachments and strip court letterhead from extracted PDF text."""
+        doc = await super().download_attachments(doc, base_dir)
+        if doc.text:
+            doc.text = _strip_court_header(doc.text)
+        return doc
 
     async def get_document(
         self, source_id: str, doc_type: DocType | None = None,

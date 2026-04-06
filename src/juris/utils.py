@@ -58,11 +58,46 @@ def parse_swedish_date(text: str) -> date | None:
         return None
 
 
+def _strip_ui_elements(el: Tag) -> None:
+    """Remove common UI chrome from a content element before text extraction.
+
+    Strips cookie banners, social share widgets, accessibility buttons,
+    breadcrumbs, and other interactive elements that pollute extracted text.
+    """
+    # Structural elements that are never document content
+    for unwanted in el.find_all(["nav", "header", "aside", "footer", "button"]):
+        unwanted.decompose()
+
+    # Class/id patterns for UI components
+    _UI_PATTERNS = re.compile(
+        r"cookie|consent|share|social|breadcrumb|sidebar|toolbar|menu|modal|popup|banner",
+        re.I,
+    )
+    for tag in el.find_all(class_=_UI_PATTERNS):
+        tag.decompose()
+    for tag in el.find_all(id=_UI_PATTERNS):
+        tag.decompose()
+
+    # Aria-label patterns (e.g. "Lyssna" buttons, share links)
+    for tag in el.find_all(attrs={"aria-label": re.compile(r"Lyssna|Dela|Share|Listen", re.I)}):
+        tag.decompose()
+
+    # Remove standalone "Lyssna" / "Dela sidan" / "Kopiera länk" text nodes
+    # that appear as bare links or spans in Swedish government sites
+    _JUNK_TEXT = re.compile(
+        r"^(?:Lyssna|Dela sidan|Dela|Kopiera länk|Instagram|Facebook|LinkedIn|Twitter)\s*$",
+    )
+    for tag in el.find_all(["a", "span", "div", "li", "p"]):
+        if tag.string and _JUNK_TEXT.match(tag.string.strip()):
+            tag.decompose()
+
+
 def extract_page_content(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     """Extract main content text and HTML from a web page.
 
     Looks for <article>, <div role="main">, <main>, or content-like divs.
-    Removes navigation, header, aside, and footer elements.
+    Removes navigation, header, aside, footer, cookie banners, social widgets,
+    and other UI elements.
     Returns (text, html) tuple.
     """
     content_el = (
@@ -72,12 +107,12 @@ def extract_page_content(soup: BeautifulSoup) -> tuple[str | None, str | None]:
         or soup.find("div", class_=re.compile(r"content|entry|body", re.I))
     )
     if content_el and isinstance(content_el, Tag):
-        for unwanted in content_el.find_all(["nav", "header", "aside", "footer"]):
-            unwanted.decompose()
+        _strip_ui_elements(content_el)
         html_str = str(content_el)
         return html_to_text(html_str), html_str
     body = soup.find("body")
     if body and isinstance(body, Tag):
+        _strip_ui_elements(body)
         html_str = str(body)
         return html_to_text(html_str), html_str
     return None, None

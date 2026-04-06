@@ -231,6 +231,7 @@ class JoJkCollector(BaseCollector):
                 except ValueError:
                     pass
         if not doc_date:
+            logger.warning("Could not parse date from %s, using today", page_url)
             doc_date = date.today()
 
         # Diarienummer (case reference number) as designation
@@ -268,6 +269,16 @@ class JoJkCollector(BaseCollector):
         # Extract main content
         summary_text, summary_html = extract_page_content(soup)
 
+        # Build a clean summary from the first substantial paragraph,
+        # skipping tag-like fragments (category labels, short metadata)
+        clean_summary: str | None = None
+        if summary_text:
+            for paragraph in re.split(r"\n{2,}", summary_text):
+                stripped = paragraph.strip()
+                if len(stripped) > 60:
+                    clean_summary = stripped[:500]
+                    break
+
         source_id = page_url.replace(base_url, "")
         doc_id = build_doc_id(doc_type, designation, session)
 
@@ -277,7 +288,7 @@ class JoJkCollector(BaseCollector):
             designation=designation,
             session=session,
             title=title,
-            summary=summary_text[:500] if summary_text else None,
+            summary=clean_summary,
             text=summary_text,
             html=summary_html,
             date=doc_date,

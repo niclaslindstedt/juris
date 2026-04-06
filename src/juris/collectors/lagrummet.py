@@ -150,9 +150,13 @@ class LagrummetCollector(BaseCollector):
         """Parse a document detail page into a Document model."""
         soup = BeautifulSoup(html, "lxml")
 
-        # Title: first <h1>
-        h1 = soup.find("h1")
-        title = h1.get_text(strip=True) if h1 else ""
+        # Title: first <h1>, but skip cookie banners
+        title = ""
+        for h in soup.find_all(["h1", "h2"]):
+            candidate = h.get_text(strip=True)
+            if candidate and not re.search(r"kakor|cookies|cookie", candidate, re.I):
+                title = candidate
+                break
         if not title:
             logger.warning("No title found on %s", page_url)
             return None
@@ -198,10 +202,20 @@ class LagrummetCollector(BaseCollector):
             # Try any ISO date on the page
             doc_date = _parse_iso_date(page_text)
         if not doc_date:
+            logger.warning("Could not parse date from %s, using today", page_url)
             doc_date = date.today()
 
         # Extract main content
         summary_text, summary_html = extract_page_content(soup)
+
+        # Build a clean summary from the first substantial paragraph
+        clean_summary: str | None = None
+        if summary_text:
+            for paragraph in re.split(r"\n{2,}", summary_text):
+                stripped = paragraph.strip()
+                if len(stripped) > 60:
+                    clean_summary = stripped[:500]
+                    break
 
         # PDF attachments
         attachments: list[Attachment] = []
@@ -228,7 +242,7 @@ class LagrummetCollector(BaseCollector):
             designation=designation,
             session=session,
             title=title,
-            summary=summary_text[:500] if summary_text else None,
+            summary=clean_summary,
             text=summary_text,
             html=summary_html,
             date=doc_date,
