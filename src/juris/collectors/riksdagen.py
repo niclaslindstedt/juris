@@ -17,6 +17,34 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://data.riksdagen.se"
 
+# Swedish Riksdag standing committees — maps prefix to full Swedish name
+_COMMITTEE_MAP: dict[str, str] = {
+    "AU": "Arbetsmarknadsutskottet",
+    "CU": "Civilutskottet",
+    "FiU": "Finansutskottet",
+    "FöU": "Försvarsutskottet",
+    "JuU": "Justitieutskottet",
+    "KU": "Konstitutionsutskottet",
+    "KrU": "Kulturutskottet",
+    "MJU": "Miljö- och jordbruksutskottet",
+    "NU": "Näringsutskottet",
+    "SfU": "Socialförsäkringsutskottet",
+    "SkU": "Skatteutskottet",
+    "SoU": "Socialutskottet",
+    "TU": "Trafikutskottet",
+    "UbU": "Utbildningsutskottet",
+    "UU": "Utrikesutskottet",
+}
+
+
+def _extract_committee(designation: str) -> str | None:
+    """Extract committee name from a BET designation like 'JuU15'."""
+    m = re.match(r"^([A-ZÅÄÖ][a-zåäö]*[A-Z][a-zåäö]?)", designation)
+    if m:
+        return _COMMITTEE_MAP.get(m.group(1))
+    return None
+
+
 # Map our DocType to Riksdagen's doktyp parameter
 _DOCTYPE_MAP: dict[DocType, str] = {
     DocType.PROP: "prop",
@@ -124,6 +152,9 @@ class RiksdagenCollector(BaseCollector):
                         )
                     )
 
+        # Extract committee name for committee reports (betänkanden)
+        committee = _extract_committee(designation) if doc_type == DocType.BET else None
+
         return Document(
             doc_id=doc_id,
             doc_type=doc_type,
@@ -135,6 +166,7 @@ class RiksdagenCollector(BaseCollector):
             html=html,
             date=doc_date,
             department=item.get("organ") or None,
+            committee=committee,
             source=Source.RIKSDAGEN,
             source_id=dok_id,
             source_url=f"{BASE_URL}/dokument/{dok_id}",
@@ -150,6 +182,7 @@ class RiksdagenCollector(BaseCollector):
         since: date | None = None,
         until: date | None = None,
         limit: int | None = None,
+        skip_content: bool = False,
     ) -> AsyncIterator[Document]:
         """Yield documents from the Riksdagen API."""
         if doc_type not in _DOCTYPE_MAP:
@@ -204,8 +237,8 @@ class RiksdagenCollector(BaseCollector):
                 dok_id = item.get("dok_id", "")
                 logger.info("Fetching %s: %s", dok_id, item.get("titel", "")[:60])
 
-                # Fetch full HTML content
-                html = await self._fetch_document_html(dok_id)
+                # Fetch full HTML content (skip when only metadata is wanted)
+                html = None if skip_content else await self._fetch_document_html(dok_id)
                 doc = self._parse_document(item, full_html=html)
                 yield doc
                 count += 1
