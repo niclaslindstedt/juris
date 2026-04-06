@@ -462,5 +462,20 @@ def stats(ctx: click.Context) -> None:
     click.echo(f"  total: {total}")
 
 
+@main.command()
+@click.argument("command", default="juris")
+def man(command: str) -> None:
+    """Display manual pages for juris commands."""
+    man_dir = Path(__file__).resolve().parent.parent.parent / "man"
+    page = man_dir / f"{command}.1"
+    if not page.exists():
+        available = sorted(p.stem for p in man_dir.glob("*.1"))
+        raise click.UsageError(
+            f"No manual page for '{command}'. "
+            f"Available: {', '.join(available)}"
+        )
+    click.echo(page.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     main()
