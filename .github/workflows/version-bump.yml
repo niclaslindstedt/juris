@@ -4,10 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Version bump type"
-        required: true
+        description: "Version bump type (leave empty to auto-detect from commits)"
+        required: false
         type: choice
         options:
+          - ""
           - patch
           - minor
           - major
@@ -22,39 +23,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Read current version
-        id: current
+      - name: Configure git
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Compute new version
-        id: new
-        run: |
-          IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
-          case "${{ inputs.bump }}" in
-            major) major=$((major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((minor + 1)); patch=0 ;;
-            patch) patch=$((patch + 1)) ;;
-          esac
-          echo "version=${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
-
-      - name: Create and push tag
-        run: |
-          tag="v${{ steps.new.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "Release $tag"
-          git push origin "$tag"
 
-      - name: Summary
-        run: |
-          echo "### Version Bump" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Previous:** ${{ steps.current.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **New:** ${{ steps.new.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Tag:** v${{ steps.new.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The [Release workflow](../actions/workflows/release.yml) will handle publishing." >> "$GITHUB_STEP_SUMMARY"
+      - name: Checkout main branch
+        run: git checkout main
+
+      - name: Run release script
+        run: ./scripts/release.sh ${{ inputs.bump }}
