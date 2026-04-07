@@ -175,17 +175,20 @@ function extractCollector(filePath: string, docTypesByName: Map<string, string>)
 
 interface ManPage {
   command: string;
+  title: string;
   content: string;
 }
 
 function extractManPages(): ManPage[] {
   const pages: ManPage[] = [];
   try {
-    const files = readdirSync(MAN_DIR).filter((f) => f.endsWith(".1")).sort();
+    const files = readdirSync(MAN_DIR).filter((f) => f.endsWith(".md")).sort();
     for (const file of files) {
-      const command = file.replace(/\.1$/, "");
+      const command = file.replace(/\.md$/, "");
       const content = readFileSync(join(MAN_DIR, file), "utf-8");
-      pages.push({ command, content });
+      const titleMatch = content.match(/^#\s+(.+)/m);
+      const title = titleMatch?.[1] ?? command;
+      pages.push({ command, title, content });
     }
   } catch {
     // man dir may not exist
@@ -263,6 +266,7 @@ export interface SourceInfo {
 
 export interface ManPage {
   command: string;
+  title: string;
   content: string;
 }
 
