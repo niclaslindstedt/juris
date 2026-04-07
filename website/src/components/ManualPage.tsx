@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { MAN_PAGES } from "../data/sourceData";
 
 const PAGE_ORDER = ["juris", "collect", "collect-type", "collect-all", "status", "stats", "man"];
@@ -157,20 +158,15 @@ function renderMarkdown(md: string, onNavigate: (cmd: string) => void): React.Re
 }
 
 function renderInline(text: string, onNavigate: (cmd: string) => void): React.ReactNode {
-  // Split on inline code, bold, and links
   const parts: React.ReactNode[] = [];
   let remaining = text;
   let partKey = 0;
 
   while (remaining.length > 0) {
-    // Markdown link: [text](url)
     const linkMatch = remaining.match(/\[([^\]]+)\]\(([^)]+)\)/);
-    // Inline code: `code`
     const codeMatch = remaining.match(/`([^`]+)`/);
-    // Bold: **text** or *text*
     const boldMatch = remaining.match(/\*\*([^*]+)\*\*/);
 
-    // Find earliest match
     const matches = [
       linkMatch ? { type: "link", match: linkMatch } : null,
       codeMatch ? { type: "code", match: codeMatch } : null,
@@ -203,7 +199,6 @@ function renderInline(text: string, onNavigate: (cmd: string) => void): React.Re
     } else if (first.type === "link") {
       const href = first.match[2];
       const linkText = first.match[1];
-      // Internal man page links are bare command names
       const manPage = MAN_PAGES.find((p) => p.command === href);
       if (manPage) {
         parts.push(
@@ -242,21 +237,39 @@ function renderInline(text: string, onNavigate: (cmd: string) => void): React.Re
   return parts.length === 1 ? parts[0] : <>{parts}</>;
 }
 
-export default function ManPages() {
+export default function ManualPage() {
+  const { command: urlCommand } = useParams();
+  const navigate = useNavigate();
+
   const sorted = PAGE_ORDER.map((cmd) => MAN_PAGES.find((p) => p.command === cmd)).filter(
     (p): p is NonNullable<typeof p> => p != null,
   );
 
-  const [active, setActive] = useState(sorted[0]?.command ?? "juris");
+  const [active, setActive] = useState(urlCommand ?? sorted[0]?.command ?? "juris");
   const page = sorted.find((p) => p.command === active) ?? sorted[0];
 
+  // Sync URL param to active state
+  useEffect(() => {
+    if (urlCommand && sorted.some((p) => p.command === urlCommand)) {
+      setActive(urlCommand);
+    }
+  }, [urlCommand, sorted]);
+
+  function handleNavigate(cmd: string) {
+    setActive(cmd);
+    navigate(`/manual/${cmd}`, { replace: true });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
-    <section id="manual" className="py-20 px-6">
+    <div className="pt-24 pb-20 px-6">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Manual</h2>
-        <p className="text-text-secondary text-center mb-12 max-w-2xl mx-auto">
-          Complete reference documentation for every juris command.
-        </p>
+        <div className="mb-10">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">Manual</h1>
+          <p className="text-text-secondary">
+            Complete reference documentation for every juris command.
+          </p>
+        </div>
 
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}
@@ -265,7 +278,7 @@ export default function ManPages() {
               {sorted.map((p) => (
                 <button
                   key={p.command}
-                  onClick={() => setActive(p.command)}
+                  onClick={() => handleNavigate(p.command)}
                   className={`text-left text-sm font-mono px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
                     active === p.command
                       ? "bg-accent/15 text-accent border border-accent/30"
@@ -280,11 +293,11 @@ export default function ManPages() {
 
           {/* Content */}
           <div className="flex-1 min-w-0 rounded-xl border border-border bg-surface-100/50 p-6 md:p-8">
-            <h1 className="text-2xl font-bold font-mono text-accent mb-2">{page.title}</h1>
-            {renderMarkdown(page.content, setActive)}
+            <h2 className="text-2xl font-bold font-mono text-accent mb-2">{page.title}</h2>
+            {renderMarkdown(page.content, handleNavigate)}
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
