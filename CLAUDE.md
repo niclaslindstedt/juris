@@ -8,7 +8,7 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, logs, man)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, logs, man, --help-agent)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
 ├── logging.py          # Collection run logging (JSONL per-document log + text file log)
@@ -37,7 +37,8 @@ tests/
 ├── test_retry.py       # Retry logic tests
 ├── test_search.py      # Search functionality tests
 ├── test_validate.py    # Document validation tests
-└── test_logging.py     # Collection logging tests
+├── test_logging.py     # Collection logging tests
+└── test_help_agent.py  # --help-agent flag tests
 docs/
 ├── overview.md         # Project overview and use cases
 ├── architecture.md     # System architecture and data flow
