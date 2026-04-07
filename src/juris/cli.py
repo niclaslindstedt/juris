@@ -17,6 +17,7 @@ from juris.collectors import (
     get_registry,
     get_searchable_sources,
 )
+from juris.logging import CollectionLogger, CompositeProgress, log_dir_path, setup_file_logging
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
 
@@ -154,19 +155,27 @@ def collect(
         )
 
     async def _run() -> None:
-        collected, skipped = await collect_from_source(
-            source,
-            dt,
-            data_dir,
-            session=session,
-            since=_parse_date(since),
-            until=_parse_date(until),
-            limit=limit,
-            skip_existing=skip_existing,
-            skip_content=skip_content,
-            progress=_VerboseReporter(),
-        )
-        click.echo(f"\nDone: {collected} collected, {skipped} skipped")
+        logs = log_dir_path(data_dir)
+        collection_logger = CollectionLogger(logs, source, dt.value)
+        file_handler = setup_file_logging(logs, source, dt.value)
+        progress = CompositeProgress(_VerboseReporter(), collection_logger)
+        try:
+            collected, skipped = await collect_from_source(
+                source,
+                dt,
+                data_dir,
+                session=session,
+                since=_parse_date(since),
+                until=_parse_date(until),
+                limit=limit,
+                skip_existing=skip_existing,
+                skip_content=skip_content,
+                progress=progress,
+            )
+            click.echo(f"\nDone: {collected} collected, {skipped} skipped")
+        finally:
+            logging.getLogger().removeHandler(file_handler)
+            file_handler.close()
 
     click.echo(f"Collecting {dt.value} from {source}...")
     asyncio.run(_run())
@@ -243,28 +252,36 @@ def collect_type(
     async def _run_all() -> tuple[int, int]:
         grand_collected = 0
         grand_skipped = 0
+        logs = log_dir_path(data_dir)
 
         for i, source_name in enumerate(providers, 1):
             click.echo(f"\n[{i}/{len(providers)}] {source_name}")
+            collection_logger = CollectionLogger(logs, source_name, dt.value)
+            file_handler = setup_file_logging(logs, source_name, dt.value)
             tracker = _ProgressTracker(
                 f"{source_name}/{dt.value}",
                 total=limit,
             )
-            collected, skipped_count = await collect_from_source(
-                source_name,
-                dt,
-                data_dir,
-                session=session,
-                since=_parse_date(since),
-                until=_parse_date(until),
-                limit=limit,
-                skip_existing=skip_existing,
-                skip_content=skip_content,
-                progress=tracker,
-            )
-            click.echo(f"  {source_name}: {collected} collected, {skipped_count} skipped")
-            grand_collected += collected
-            grand_skipped += skipped_count
+            progress = CompositeProgress(tracker, collection_logger)
+            try:
+                collected, skipped_count = await collect_from_source(
+                    source_name,
+                    dt,
+                    data_dir,
+                    session=session,
+                    since=_parse_date(since),
+                    until=_parse_date(until),
+                    limit=limit,
+                    skip_existing=skip_existing,
+                    skip_content=skip_content,
+                    progress=progress,
+                )
+                click.echo(f"  {source_name}: {collected} collected, {skipped_count} skipped")
+                grand_collected += collected
+                grand_skipped += skipped_count
+            finally:
+                logging.getLogger().removeHandler(file_handler)
+                file_handler.close()
 
         return grand_collected, grand_skipped
 
@@ -368,6 +385,7 @@ def collect_all(
                 source_groups.setdefault(source_name, []).append(dt)
 
             semaphore = asyncio.Semaphore(max_concurrency)
+            logs = log_dir_path(data_dir)
 
             async def _collect_group(source_name: str, doc_types: list[DocType]) -> tuple[int, int]:
                 """Collect all doc types for a single source sequentially."""
@@ -376,27 +394,34 @@ def collect_all(
                 async with semaphore:
                     for dt in doc_types:
                         click.echo(f"  Starting {dt.value} <- {source_name}")
+                        collection_logger = CollectionLogger(logs, source_name, dt.value)
+                        file_handler = setup_file_logging(logs, source_name, dt.value)
                         tracker = _ProgressTracker(
                             f"{source_name}/{dt.value}",
                             total=limit,
                         )
-                        collected, skipped = await collect_from_source(
-                            source_name,
-                            dt,
-                            data_dir,
-                            since=_parse_date(since),
-                            until=_parse_date(until),
-                            limit=limit,
-                            skip_existing=skip_existing,
-                            skip_content=skip_content,
-                            progress=tracker,
-                        )
-                        click.echo(
-                            f"  Done {source_name}/{dt.value}: "
-                            f"{collected} collected, {skipped} skipped"
-                        )
-                        group_collected += collected
-                        group_skipped += skipped
+                        progress = CompositeProgress(tracker, collection_logger)
+                        try:
+                            collected, skipped = await collect_from_source(
+                                source_name,
+                                dt,
+                                data_dir,
+                                since=_parse_date(since),
+                                until=_parse_date(until),
+                                limit=limit,
+                                skip_existing=skip_existing,
+                                skip_content=skip_content,
+                                progress=progress,
+                            )
+                            click.echo(
+                                f"  Done {source_name}/{dt.value}: "
+                                f"{collected} collected, {skipped} skipped"
+                            )
+                            group_collected += collected
+                            group_skipped += skipped
+                        finally:
+                            logging.getLogger().removeHandler(file_handler)
+                            file_handler.close()
                 return group_collected, group_skipped
 
             tasks = [
@@ -415,27 +440,37 @@ def collect_all(
         async def _run_sequential() -> tuple[int, int]:
             grand_collected = 0
             grand_skipped = 0
+            logs = log_dir_path(data_dir)
 
             for i, (dt, source_name) in enumerate(plan, 1):
                 click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {source_name}")
+                collection_logger = CollectionLogger(logs, source_name, dt.value)
+                file_handler = setup_file_logging(logs, source_name, dt.value)
                 tracker = _ProgressTracker(
                     f"{source_name}/{dt.value}",
                     total=limit,
                 )
-                collected, skipped = await collect_from_source(
-                    source_name,
-                    dt,
-                    data_dir,
-                    since=_parse_date(since),
-                    until=_parse_date(until),
-                    limit=limit,
-                    skip_existing=skip_existing,
-                    skip_content=skip_content,
-                    progress=tracker,
-                )
-                click.echo(f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped")
-                grand_collected += collected
-                grand_skipped += skipped
+                progress = CompositeProgress(tracker, collection_logger)
+                try:
+                    collected, skipped = await collect_from_source(
+                        source_name,
+                        dt,
+                        data_dir,
+                        since=_parse_date(since),
+                        until=_parse_date(until),
+                        limit=limit,
+                        skip_existing=skip_existing,
+                        skip_content=skip_content,
+                        progress=progress,
+                    )
+                    click.echo(
+                        f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped"
+                    )
+                    grand_collected += collected
+                    grand_skipped += skipped
+                finally:
+                    logging.getLogger().removeHandler(file_handler)
+                    file_handler.close()
 
             return grand_collected, grand_skipped
 
@@ -732,6 +767,153 @@ def _print_issues(path: str, issues: list[tuple[str, str]]) -> None:
     for level, message in issues:
         marker = click.style(level, fg="red" if level == "ERROR" else "yellow")
         click.echo(f"    [{marker}] {message}")
+
+
+@main.command()
+@click.option(
+    "--source",
+    type=click.Choice(_COLLECTOR_NAMES),
+    default=None,
+    help="Filter by source.",
+)
+@click.option(
+    "--type",
+    "doc_type",
+    type=click.Choice([dt.value for dt in DocType]),
+    default=None,
+    help="Filter by document type.",
+)
+@click.option("--failures", is_flag=True, help="Show only failed or warned documents.")
+@click.option("--run", "run_name", default=None, help="Show entries from a specific run file.")
+@click.pass_context
+def logs(
+    ctx: click.Context,
+    source: str | None,
+    doc_type: str | None,
+    failures: bool,
+    run_name: str | None,
+) -> None:
+    """View collection run logs.
+
+    Lists recent runs with summaries.  Use --failures to see only documents
+    that failed or had warnings.  Use --run to inspect a specific run file.
+    """
+    data_dir: Path = ctx.obj["data_dir"]
+    logs_dir = data_dir / ".logs"
+
+    if not logs_dir.exists():
+        click.echo("No logs found. Run a collection command first.")
+        return
+
+    jsonl_files = sorted(logs_dir.glob("*.jsonl"), reverse=True)
+    if not jsonl_files:
+        click.echo("No log files found.")
+        return
+
+    # Filter by source/doc_type from filename ({ts}_{source}_{doctype}.jsonl)
+    if source or doc_type:
+        filtered: list[Path] = []
+        for f in jsonl_files:
+            parts = f.stem.split("_", 1)
+            if len(parts) < 2:
+                continue
+            name_part = parts[1]  # e.g. "riksdagen_prop"
+            if source and source not in name_part:
+                continue
+            if doc_type and not name_part.endswith(doc_type):
+                continue
+            filtered.append(f)
+        jsonl_files = filtered
+
+    # Show a specific run
+    if run_name:
+        matches = [f for f in jsonl_files if run_name in f.stem]
+        if not matches:
+            click.echo(f"No log file matching '{run_name}'.")
+            return
+        _display_run(matches[0], failures)
+        return
+
+    # List recent runs with summaries
+    click.echo(f"  {'Run':55s}  {'Saved':>6s}  {'Skip':>6s}  {'Fail':>6s}  {'Warn':>6s}")
+    click.echo(f"  {'─' * 55}  {'─' * 6}  {'─' * 6}  {'─' * 6}  {'─' * 6}")
+    for f in jsonl_files[:20]:
+        summary = _read_run_summary(f)
+        if summary:
+            click.echo(
+                f"  {f.stem:55s}  {summary['collected']:6d}"
+                f"  {summary['skipped']:6d}  {summary['failed']:6d}"
+                f"  {summary['warnings']:6d}"
+            )
+        else:
+            click.echo(f"  {f.stem:55s}  (no summary)")
+
+    if len(jsonl_files) > 20:
+        click.echo(f"\n  ... and {len(jsonl_files) - 20} more (use --source/--type to filter)")
+
+
+def _read_run_summary(path: Path) -> dict[str, int] | None:
+    """Read the summary line (last line) from a JSONL log file."""
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    if not lines:
+        return None
+    try:
+        last = json.loads(lines[-1])
+        if last.get("type") == "summary":
+            return {
+                "collected": last.get("total_collected", 0),
+                "skipped": last.get("total_skipped", 0),
+                "failed": last.get("total_failed", 0),
+                "warnings": last.get("total_warnings", 0),
+            }
+    except json.JSONDecodeError:
+        pass
+    return None
+
+
+def _display_run(path: Path, failures_only: bool) -> None:
+    """Display entries from a single run JSONL file."""
+    click.echo(f"  Run: {path.stem}\n")
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    entry_count = 0
+
+    for line in lines:
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if data.get("type") == "summary":
+            click.echo(
+                f"\n  Summary: {data.get('total_collected', 0)} collected, "
+                f"{data.get('total_skipped', 0)} skipped, "
+                f"{data.get('total_failed', 0)} failed, "
+                f"{data.get('total_warnings', 0)} warnings"
+            )
+            click.echo(f"  Period: {data.get('started_at', '?')} -> {data.get('finished_at', '?')}")
+            continue
+
+        status = data.get("status", "?")
+        if failures_only and status in ("ok", "skipped"):
+            continue
+
+        entry_count += 1
+        status_color = {
+            "ok": "green",
+            "ok_with_warnings": "yellow",
+            "skipped": "cyan",
+            "failed": "red",
+        }.get(status, None)
+        status_str = click.style(status, fg=status_color) if status_color else status
+
+        click.echo(f"  {data.get('doc_id', '?'):40s}  [{status_str}]")
+        for w in data.get("warnings", []):
+            click.echo(f"    WARNING: {w}")
+        if data.get("error"):
+            click.echo(f"    ERROR: {data['error']}")
+
+    if entry_count == 0 and failures_only:
+        click.echo("  No failures or warnings found.")
 
 
 @main.command()
