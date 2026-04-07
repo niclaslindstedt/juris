@@ -1,6 +1,8 @@
 # juris
 
 [![Website](https://img.shields.io/badge/website-juris-d4a843?style=flat&logo=github)](https://niclaslindstedt.github.io/juris/)
+[![PyPI](https://img.shields.io/pypi/v/juris?color=d4a843)](https://pypi.org/project/juris/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-d4a843)](LICENSE)
 
 ### Swedish Parliament
 [![prop](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml)
@@ -246,6 +248,14 @@ ruff check src/
 mypy src/
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and how to add new collectors.
+
+Please report security vulnerabilities via [GitHub's private reporting](https://github.com/niclaslindstedt/juris/security/advisories/new) — see [SECURITY.md](SECURITY.md) for details.
+
+This project follows the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
+
 ## License
 
-MIT
+[MIT](LICENSE)
