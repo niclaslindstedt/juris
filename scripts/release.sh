@@ -38,7 +38,7 @@ fi
 IFS='.' read -r major minor patch <<< "$current_version"
 
 # Determine bump type
-if [[ $# -ge 1 ]]; then
+if [[ $# -ge 1 && -n "$1" ]]; then
   bump="$1"
 else
   last_tag=$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null || echo "")

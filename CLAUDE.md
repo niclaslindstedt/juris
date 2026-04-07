@@ -129,7 +129,7 @@ Collectors are auto-discovered via `BaseCollector.__init_subclass__`. To add one
 
 Releases are automated via GitHub Actions:
 
-1. **Via GitHub UI**: Run the "Version Bump" workflow (`version-bump.yml`) with a bump type (patch/minor/major). This creates a git tag which triggers the release pipeline.
+1. **Via GitHub UI**: Run the "Version Bump" workflow (`version-bump.yml`). The bump type can be left empty to auto-detect from conventional commits, or explicitly set to patch/minor/major. This creates a git tag which triggers the release pipeline.
 2. **Via CLI**: Run `./scripts/release.sh [patch|minor|major]` from the main branch. Without an argument, the bump type is inferred from conventional commits.
 
 The release pipeline (`release.yml`) then:
