@@ -1,5 +1,36 @@
 # juris
 
+### Swedish Parliament
+[![prop](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml)
+[![mot](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mot.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mot.yml)
+[![bet](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-bet.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-bet.yml)
+[![skr](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-skr.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-skr.yml)
+
+### Swedish Government
+[![sou](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-sou.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-sou.yml)
+[![ds](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-ds.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-ds.yml)
+[![dir](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-dir.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-dir.yml)
+[![lagr](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-lagr.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-lagr.yml)
+[![sfs](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-sfs.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-sfs.yml)
+
+### Courts
+[![nja](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-nja.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-nja.yml)
+[![ad](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-ad.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-ad.yml)
+[![hfd](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-hfd.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-hfd.yml)
+[![mod](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mod.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mod.yml)
+[![pmod](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-pmod.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-pmod.yml)
+
+### Authorities
+[![jo](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-jo.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-jo.yml)
+[![jk](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-jk.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-jk.yml)
+[![foreskrift](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-foreskrift.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-foreskrift.yml)
+
+### EU Law
+[![eu_reg](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-eu_reg.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-eu_reg.yml)
+[![eu_dir](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-eu_dir.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-eu_dir.yml)
+[![cjeu](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-cjeu.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-cjeu.yml)
+[![echr](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-echr.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-echr.yml)
+
 A command-line tool for collecting and normalizing Swedish legal documents from official government sources.
 
 Sweden has a wealth of public legal information — laws, government bills, public inquiries, court decisions — scattered across multiple government websites and APIs with inconsistent formats. **juris** collects documents from these sources, normalizes them into a unified format, and saves them as browsable, version-controlled files (Markdown + JSON). Think of it as a git-native open database for Swedish law.
