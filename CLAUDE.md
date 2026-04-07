@@ -8,9 +8,10 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, status, stats, man)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, man)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
-├── models.py           # Pydantic models (Document, DocType, Source, Attachment)
+├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
+├── search.py           # Document search (local + provider-based, search_local, search_all)
 ├── storage.py          # Dual-format file storage (JSON + Markdown with YAML frontmatter)
 ├── state.py            # Incremental collection state tracking (.state/ directory)
 ├── utils.py            # Shared utilities (rate limiting, text extraction, ID building)
@@ -33,6 +34,7 @@ tests/
 ├── test_parsers.py     # Parser validation tests
 ├── test_registry.py    # Collector auto-discovery and registry tests
 ├── test_retry.py       # Retry logic tests
+├── test_search.py      # Search functionality tests
 └── test_validate.py    # Document validation tests
 docs/
 ├── overview.md         # Project overview and use cases

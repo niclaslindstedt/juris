@@ -15,8 +15,9 @@ from juris.collectors import (
     get_doc_type_providers,
     get_preferred_providers,
     get_registry,
+    get_searchable_sources,
 )
-from juris.models import DocType
+from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
 
 logger = logging.getLogger(__name__)
@@ -488,6 +489,102 @@ def stats(ctx: click.Context) -> None:
             total += count
 
     click.echo(f"  total: {total}")
+
+
+@main.command()
+@click.argument("query")
+@click.option(
+    "--source",
+    type=click.Choice(_COLLECTOR_NAMES),
+    default=None,
+    help="Search only this source.",
+)
+@click.option(
+    "--type",
+    "doc_type",
+    type=click.Choice([dt.value for dt in DocType]),
+    default=None,
+    help="Filter by document type.",
+)
+@click.option("--local-only", is_flag=True, help="Search only collected documents on disk.")
+@click.option("--provider-only", is_flag=True, help="Search only via provider APIs.")
+@click.option("--limit", default=20, type=int, help="Maximum results to display.")
+@click.pass_context
+def search(
+    ctx: click.Context,
+    query: str,
+    source: str | None,
+    doc_type: str | None,
+    local_only: bool,
+    provider_only: bool,
+    limit: int,
+) -> None:
+    """Search for documents by keyword.
+
+    Searches both collected local documents and provider APIs (where supported).
+    Use --local-only to search only what has been collected, or --provider-only
+    to search only via remote APIs.
+
+    \b
+    Providers with search support: jo_jk (JK only), hudoc
+    """
+    data_dir: Path = ctx.obj["data_dir"]
+    dt = DocType(doc_type) if doc_type else None
+    src = Source(source) if source else None
+
+    if local_only and provider_only:
+        raise click.UsageError("Cannot use both --local-only and --provider-only.")
+
+    searchable = get_searchable_sources()
+
+    if not local_only:
+        if source and source not in searchable:
+            click.echo(
+                f"Note: '{source}' does not support remote search. "
+                f"Searching local documents only."
+            )
+            local_only = True
+
+    async def _run() -> list[SearchResult]:
+        from juris.search import search_all
+
+        return await search_all(
+            query,
+            data_dir,
+            doc_type=dt,
+            source=src,
+            local_only=local_only,
+            provider_only=provider_only,
+            limit=limit,
+        )
+
+    results = asyncio.run(_run())
+    _display_search_results(results, query)
+
+
+def _display_search_results(results: list[SearchResult], query: str) -> None:
+    """Format and display search results in the terminal."""
+    if not results:
+        click.echo("No results found.")
+        return
+
+    click.echo(f"\n  {len(results)} result(s) for '{query}':\n")
+
+    for i, r in enumerate(results, 1):
+        if r.local:
+            local_marker = click.style("LOCAL", fg="green")
+        else:
+            local_marker = click.style("REMOTE", fg="yellow")
+        date_str = str(r.date) if r.date else "—"
+        type_str = r.doc_type.value.upper()
+
+        click.echo(f"  {i:3d}. [{local_marker}] [{type_str}] {r.title}")
+        click.echo(f"       {r.designation or '—'}  |  {date_str}  |  {r.source.value}")
+        if r.snippet:
+            click.echo(f"       {r.snippet}")
+        if r.source_url:
+            click.echo(f"       {r.source_url}")
+        click.echo()
 
 
 @main.command()

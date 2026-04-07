@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from juris.collectors.base import BaseCollector
-from juris.models import DocType, Document, Source
+from juris.models import DocType, Document, SearchResult, Source
 from juris.utils import build_doc_id, html_to_text
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ class HudocCollector(BaseCollector):
 
     source = Source.HUDOC
     supported_doc_types = [DocType.ECHR]
+    supports_search = True
 
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit)
@@ -192,6 +193,43 @@ class HudocCollector(BaseCollector):
 
         logger.debug("HUDOC full text unavailable for %s", item_id)
         return None, None
+
+    async def search(
+        self,
+        query: str,
+        *,
+        doc_type: DocType | None = None,
+        limit: int = 20,
+    ) -> list[SearchResult]:
+        """Search HUDOC for ECtHR judgments matching the query."""
+        if doc_type and doc_type != DocType.ECHR:
+            return []
+
+        hudoc_query = (
+            'contentsitename:"ECHR" AND '
+            'documentcollectionid:"JUDGMENTS" AND '
+            f'"{query}"'
+        )
+        raw_results = await self._search(hudoc_query, start=0, length=limit)
+
+        results: list[SearchResult] = []
+        for item in raw_results:
+            doc = self._parse_result(item)
+            if not doc:
+                continue
+            results.append(SearchResult(
+                doc_id=doc.doc_id,
+                doc_type=DocType.ECHR,
+                title=doc.title,
+                designation=doc.designation,
+                session=doc.session,
+                date=doc.date,
+                source=Source.HUDOC,
+                source_url=doc.source_url,
+                summary=doc.summary,
+            ))
+
+        return results
 
     async def collect(
         self,

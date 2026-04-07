@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 
 import httpx
 
-from juris.models import DocType, Document, Source
+from juris.models import DocType, Document, SearchResult, Source
 from juris.pdf import extract_text as extract_pdf_text
 from juris.storage import _doc_dir
 from juris.utils import RateLimiter
@@ -52,6 +52,7 @@ class BaseCollector(ABC):
     source: ClassVar[Source]
     supported_doc_types: ClassVar[list[DocType]]
     preferred_for: ClassVar[list[DocType]] = []
+    supports_search: ClassVar[bool] = False
     _limiter: RateLimiter
 
     def __init_subclass__(cls, **kwargs: object) -> None:
@@ -186,6 +187,20 @@ class BaseCollector(ABC):
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single document by its source-specific ID."""
         ...
+
+    async def search(
+        self,
+        query: str,
+        *,
+        doc_type: DocType | None = None,
+        limit: int = 20,
+    ) -> list[SearchResult]:
+        """Search for documents via the provider API.
+
+        Override in subclasses that support remote search.
+        Raises NotImplementedError by default.
+        """
+        raise NotImplementedError(f"{self.source} does not support search")
 
     # ------------------------------------------------------------------
     # Shared attachment download + PDF extraction
@@ -332,6 +347,12 @@ def get_doc_type_providers() -> dict[str, list[str]]:
         for dt in cls.supported_doc_types:
             mapping.setdefault(dt.value, []).append(source_name)
     return mapping
+
+
+def get_searchable_sources() -> list[str]:
+    """Return source names for collectors that support search."""
+    _ensure_discovered()
+    return [name for name, cls in _COLLECTOR_REGISTRY.items() if cls.supports_search]
 
 
 def get_preferred_providers() -> dict[str, str]:

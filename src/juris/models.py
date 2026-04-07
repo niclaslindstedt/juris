@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from datetime import date, datetime
 from enum import StrEnum
 
@@ -104,3 +105,19 @@ class Document(BaseModel):
 
     # Attachments
     attachments: list[Attachment] = []
+
+
+class SearchResult(BaseModel):
+    """A search result from local storage or a provider API."""
+
+    doc_id: str
+    doc_type: DocType
+    title: str
+    designation: str = ""
+    session: str | None = None
+    date: _dt.date | None = None
+    source: Source
+    source_url: str | None = None
+    summary: str | None = None
+    snippet: str | None = None  # Text excerpt around match
+    local: bool = False  # True if document exists on disk
