@@ -8,8 +8,8 @@
  * - Version from pyproject.toml
  */
 
-import { readFileSync, writeFileSync, readdirSync } from "fs";
-import { resolve, join } from "path";
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "fs";
+import { resolve, join, dirname } from "path";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const MODELS_PATH = join(ROOT, "src/juris/models.py");
@@ -275,6 +275,7 @@ export const DOC_TYPE_CATEGORIES: Record<string, string[]> = ${JSON.stringify(ca
 export const MAN_PAGES: ManPage[] = ${JSON.stringify(manPages, null, 2)};
 `;
 
+mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
 writeFileSync(OUTPUT_PATH, output, "utf-8");
 console.log(`Generated ${OUTPUT_PATH}`);
 console.log(`  Version: ${version}`);
