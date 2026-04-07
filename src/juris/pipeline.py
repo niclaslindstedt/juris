@@ -69,7 +69,10 @@ async def collect_from_source(
             skip_content=skip_content,
         ):
             exists = document_exists(
-                doc.doc_id, doc.doc_type, doc.session, data_dir,
+                doc.doc_id,
+                doc.doc_type,
+                doc.session,
+                data_dir,
             )
             if skip_existing and exists:
                 skipped += 1

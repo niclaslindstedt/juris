@@ -66,10 +66,7 @@ class _ProgressTracker:
             bar_width = 20
             filled = int(bar_width * pct / 100)
             bar = "█" * filled + "░" * (bar_width - filled)
-            line = (
-                f"\r  {self.label}: {bar} {pct}% "
-                f"({collected} saved, {skipped} skipped)"
-            )
+            line = f"\r  {self.label}: {bar} {pct}% ({collected} saved, {skipped} skipped)"
         else:
             line = f"\r  {self.label}: {collected} saved, {skipped} skipped"
         padded = line.ljust(self._last_line_len)
@@ -92,7 +89,9 @@ class _VerboseReporter:
 
 @click.group()
 @click.option(
-    "--data-dir", type=click.Path(), default="data",
+    "--data-dir",
+    type=click.Path(),
+    default="data",
     help="Output directory for collected data.",
 )
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose logging.")
@@ -110,7 +109,9 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
 @main.command()
 @click.argument("source", type=click.Choice(_COLLECTOR_NAMES))
 @click.option(
-    "--type", "doc_type", required=True,
+    "--type",
+    "doc_type",
+    required=True,
     type=click.Choice([dt.value for dt in DocType]),
     help="Document type to collect.",
 )
@@ -119,11 +120,13 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
 @click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
 @click.option("--limit", default=None, type=int, help="Maximum number of documents to collect.")
 @click.option(
-    "--skip-existing/--no-skip-existing", default=True,
+    "--skip-existing/--no-skip-existing",
+    default=True,
     help="Skip already collected documents.",
 )
 @click.option(
-    "--skip-content/--no-skip-content", default=False,
+    "--skip-content/--no-skip-content",
+    default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.pass_context
@@ -146,8 +149,7 @@ def collect(
     if dt not in collector_cls.supported_doc_types:
         supported = ", ".join(t.value for t in collector_cls.supported_doc_types)
         raise click.UsageError(
-            f"Source '{source}' does not support type '{doc_type}'. "
-            f"Supported types: {supported}"
+            f"Source '{source}' does not support type '{doc_type}'. Supported types: {supported}"
         )
 
     async def _run() -> None:
@@ -176,16 +178,19 @@ def collect(
 @click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
 @click.option("--limit", default=None, type=int, help="Max documents per provider.")
 @click.option(
-    "--skip-existing/--no-skip-existing", default=True,
+    "--skip-existing/--no-skip-existing",
+    default=True,
     help="Skip already collected documents.",
 )
 @click.option(
-    "--skip-content/--no-skip-content", default=False,
+    "--skip-content/--no-skip-content",
+    default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
 @click.option(
-    "--all-providers", is_flag=True,
+    "--all-providers",
+    is_flag=True,
     help="Use all providers instead of only the preferred one.",
 )
 @click.pass_context
@@ -230,10 +235,7 @@ def collect_type(
             click.echo(f"Skipped (lower quality): {', '.join(skipped)}")
         return
 
-    click.echo(
-        f"Collecting {doc_type} from {len(providers)} provider(s): "
-        f"{', '.join(providers)}"
-    )
+    click.echo(f"Collecting {doc_type} from {len(providers)} provider(s): {', '.join(providers)}")
     if skipped:
         click.echo(f"  (skipped: {', '.join(skipped)} — use --all-providers to include)")
 
@@ -244,7 +246,8 @@ def collect_type(
         for i, source_name in enumerate(providers, 1):
             click.echo(f"\n[{i}/{len(providers)}] {source_name}")
             tracker = _ProgressTracker(
-                f"{source_name}/{dt.value}", total=limit,
+                f"{source_name}/{dt.value}",
+                total=limit,
             )
             collected, skipped_count = await collect_from_source(
                 source_name,
@@ -276,20 +279,25 @@ def collect_type(
 @click.option("--until", default=None, help="Collect documents until this date (YYYY-MM-DD).")
 @click.option("--limit", default=None, type=int, help="Max documents per doc type.")
 @click.option(
-    "--skip-existing/--no-skip-existing", default=True,
+    "--skip-existing/--no-skip-existing",
+    default=True,
     help="Skip already collected documents.",
 )
 @click.option(
-    "--skip-content/--no-skip-content", default=False,
+    "--skip-content/--no-skip-content",
+    default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
 @click.option(
-    "--concurrent/--sequential", default=False,
+    "--concurrent/--sequential",
+    default=False,
     help="Run independent sources concurrently (faster, but noisier output).",
 )
 @click.option(
-    "--max-concurrency", default=4, type=int,
+    "--max-concurrency",
+    default=4,
+    type=int,
     help="Maximum number of concurrent source collections (default 4).",
 )
 @click.pass_context
@@ -340,18 +348,14 @@ def collect_all(
             alt = [p for p in providers if p != source_name]
             alt_str = f"  (skipped: {', '.join(alt)})" if alt else ""
             click.echo(f"  {dt.value:12s} <- {source_name}{alt_str}")
-        click.echo(f"\n{len(plan)} document types across "
-                    f"{len({s for _, s in plan})} providers")
+        click.echo(f"\n{len(plan)} document types across {len({s for _, s in plan})} providers")
         if concurrent:
             click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
         else:
             click.echo("Mode: sequential")
         return
 
-    click.echo(
-        f"Collecting {len(plan)} document types from "
-        f"{len({s for _, s in plan})} providers"
-    )
+    click.echo(f"Collecting {len(plan)} document types from {len({s for _, s in plan})} providers")
 
     if concurrent:
         click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
@@ -364,9 +368,7 @@ def collect_all(
 
             semaphore = asyncio.Semaphore(max_concurrency)
 
-            async def _collect_group(
-                source_name: str, doc_types: list[DocType]
-            ) -> tuple[int, int]:
+            async def _collect_group(source_name: str, doc_types: list[DocType]) -> tuple[int, int]:
                 """Collect all doc types for a single source sequentially."""
                 group_collected = 0
                 group_skipped = 0
@@ -374,7 +376,8 @@ def collect_all(
                     for dt in doc_types:
                         click.echo(f"  Starting {dt.value} <- {source_name}")
                         tracker = _ProgressTracker(
-                            f"{source_name}/{dt.value}", total=limit,
+                            f"{source_name}/{dt.value}",
+                            total=limit,
                         )
                         collected, skipped = await collect_from_source(
                             source_name,
@@ -407,6 +410,7 @@ def collect_all(
 
         total_collected, total_skipped = asyncio.run(_run_concurrent())
     else:
+
         async def _run_sequential() -> tuple[int, int]:
             grand_collected = 0
             grand_skipped = 0
@@ -414,7 +418,8 @@ def collect_all(
             for i, (dt, source_name) in enumerate(plan, 1):
                 click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {source_name}")
                 tracker = _ProgressTracker(
-                    f"{source_name}/{dt.value}", total=limit,
+                    f"{source_name}/{dt.value}",
+                    total=limit,
                 )
                 collected, skipped = await collect_from_source(
                     source_name,
@@ -427,9 +432,7 @@ def collect_all(
                     skip_content=skip_content,
                     progress=tracker,
                 )
-                click.echo(
-                    f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped"
-                )
+                click.echo(f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped")
                 grand_collected += collected
                 grand_skipped += skipped
 
@@ -488,9 +491,13 @@ def stats(ctx: click.Context) -> None:
 
 
 @main.command()
-@click.option("--type", "doc_type", default=None,
-              type=click.Choice([dt.value for dt in DocType]),
-              help="Only validate this document type.")
+@click.option(
+    "--type",
+    "doc_type",
+    default=None,
+    type=click.Choice([dt.value for dt in DocType]),
+    help="Only validate this document type.",
+)
 @click.option("--fix", is_flag=True, help="Attempt to auto-fix minor issues (e.g. missing doc_id).")
 @click.pass_context
 def validate(ctx: click.Context, doc_type: str | None, fix: bool) -> None:
@@ -575,6 +582,7 @@ def validate(ctx: click.Context, doc_type: str | None, fix: bool) -> None:
             if date_str:
                 try:
                     from datetime import date as date_cls
+
                     doc_date = date_cls.fromisoformat(date_str)
                     if doc_date.year < 1900:
                         issues.append(("WARN", f"Suspiciously old date: {date_str}"))
@@ -593,10 +601,12 @@ def validate(ctx: click.Context, doc_type: str | None, fix: bool) -> None:
                     year = int(session[:4])
                     doc_year = int(date_str[:4])
                     if abs(year - doc_year) > 2:
-                        issues.append((
-                            "WARN",
-                            f"Session {session} doesn't match date year {doc_year}",
-                        ))
+                        issues.append(
+                            (
+                                "WARN",
+                                f"Session {session} doesn't match date year {doc_year}",
+                            )
+                        )
                         total_warnings += 1
                 except (ValueError, IndexError):
                     pass
@@ -635,10 +645,7 @@ def man(command: str) -> None:
     page = man_dir / f"{command}.1"
     if not page.exists():
         available = sorted(p.stem for p in man_dir.glob("*.1"))
-        raise click.UsageError(
-            f"No manual page for '{command}'. "
-            f"Available: {', '.join(available)}"
-        )
+        raise click.UsageError(f"No manual page for '{command}'. Available: {', '.join(available)}")
     click.echo(page.read_text(encoding="utf-8"))
 
 
