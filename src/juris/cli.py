@@ -28,6 +28,166 @@ DEFAULT_DATA_DIR = Path("data")
 # Resolved at import time (auto-discovery has already run).
 _COLLECTOR_NAMES = sorted(get_registry().keys())
 
+# English descriptions for each document type (enum comments aren't accessible at runtime).
+_DOC_TYPE_DESCRIPTIONS: dict[str, str] = {
+    "prop": "Government bills (propositioner)",
+    "sou": "Government inquiries (statens offentliga utredningar)",
+    "mot": "Parliamentary motions (motioner)",
+    "bet": "Committee reports (betänkanden)",
+    "ds": "Department series (departementsserien)",
+    "lagr": "Legal council referrals (lagrådsremisser)",
+    "dir": "Committee directives (kommittédirektiv)",
+    "skr": "Government communications (skrivelser)",
+    "sfs": "Swedish Code of Statutes (svensk författningssamling)",
+    "nja": "Supreme Court precedents (Nytt Juridiskt Arkiv)",
+    "ad": "Labour Court decisions (Arbetsdomstolen)",
+    "hfd": "Supreme Administrative Court yearbook (HFD)",
+    "mod": "Land & Environment Court of Appeal decisions (MÖD)",
+    "pmod": "Patent & Market Court of Appeal decisions (PMÖD)",
+    "jo": "Parliamentary Ombudsman decisions (JO)",
+    "jk": "Chancellor of Justice decisions (JK)",
+    "foreskrift": "Regulatory agency rules (myndighetsföreskrifter)",
+    "eu_reg": "EU regulations (förordningar)",
+    "eu_dir": "EU directives (direktiv)",
+    "cjeu": "CJEU judgments (EU-domstolen)",
+    "echr": "ECtHR judgments against Sweden (Europadomstolen)",
+}
+
+
+def _generate_agent_help() -> str:
+    """Build a concise reference prompt for AI agents using juris."""
+    registry = get_registry()
+    preferred = get_preferred_providers()
+    searchable = get_searchable_sources()
+
+    lines: list[str] = []
+    lines.append("# juris — Swedish legal data collection CLI")
+    lines.append("")
+    lines.append("Collects and stores Swedish legal documents from 8 public sources")
+    lines.append("as JSON + Markdown files. Use `--data-dir DIR` to set the output directory")
+    lines.append("(default: `data`).")
+    lines.append("")
+
+    # Document types
+    lines.append("## Document types")
+    lines.append("")
+    for dt in DocType:
+        desc = _DOC_TYPE_DESCRIPTIONS.get(dt.value, "")
+        lines.append(f"- `{dt.value}` — {desc}")
+    lines.append("")
+
+    # Sources and supported types
+    lines.append("## Sources")
+    lines.append("")
+    for source_name in sorted(registry.keys()):
+        cls = registry[source_name]
+        types = ", ".join(t.value for t in cls.supported_doc_types)
+        search_note = " (supports search)" if source_name in searchable else ""
+        lines.append(f"- `{source_name}`: {types}{search_note}")
+    lines.append("")
+
+    # Preferred providers
+    lines.append("## Preferred providers")
+    lines.append("")
+    lines.append("When multiple sources support the same type, the preferred provider is:")
+    lines.append("")
+    for dt_val, source_name in sorted(preferred.items()):
+        lines.append(f"- `{dt_val}` <- `{source_name}`")
+    lines.append("")
+
+    # Commands
+    lines.append("## Commands")
+    lines.append("")
+    lines.append("### collect — Collect from a specific source")
+    lines.append("```")
+    lines.append(
+        "juris collect <source> --type <doc_type> [--session SESSION] "
+        "[--since YYYY-MM-DD] [--until YYYY-MM-DD] [--limit N] "
+        "[--skip-content] [--no-skip-existing]"
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### collect-type — Collect using the best provider")
+    lines.append("```")
+    lines.append(
+        "juris collect-type <doc_type> [--session SESSION] "
+        "[--since YYYY-MM-DD] [--until YYYY-MM-DD] [--limit N] "
+        "[--all-providers] [--dry-run]"
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### collect-all — Collect all types from best providers")
+    lines.append("```")
+    lines.append(
+        "juris collect-all [--since YYYY-MM-DD] [--until YYYY-MM-DD] "
+        "[--limit N] [--concurrent] [--dry-run]"
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### search — Search for documents by keyword")
+    lines.append("```")
+    lines.append(
+        "juris search <query> [--source SOURCE] [--type DOC_TYPE] "
+        "[--local-only] [--provider-only] [--limit N]"
+    )
+    lines.append("```")
+    lines.append("")
+    lines.append("### Other: `status`, `stats`, `validate`, `logs`")
+    lines.append("")
+
+    # Key options
+    lines.append("## Key options")
+    lines.append("")
+    lines.append("- `--data-dir DIR` — Output directory (default: `data`)")
+    lines.append("- `--session` — Parliamentary session (e.g. `2024/25`) or year (e.g. `2024`)")
+    lines.append("- `--since` / `--until` — Date range filter (`YYYY-MM-DD`)")
+    lines.append("- `--limit N` — Max documents to collect")
+    lines.append("- `--skip-content` — Metadata only (faster, no full text)")
+    lines.append("- `--no-skip-existing` — Re-collect and overwrite existing documents")
+    lines.append("")
+
+    # Output format
+    lines.append("## Output format")
+    lines.append("")
+    lines.append("```")
+    lines.append("<data-dir>/<doc_type>/<session>/<doc_id>.json")
+    lines.append("<data-dir>/<doc_type>/<session>/<doc_id>.md")
+    lines.append("```")
+    lines.append("")
+
+    # Examples
+    lines.append("## Examples")
+    lines.append("")
+    lines.append("```sh")
+    lines.append("# Collect Supreme Court decisions from 2024")
+    lines.append("juris collect domstol --type nja --session 2024")
+    lines.append("")
+    lines.append("# Collect government bills from session 2024/25")
+    lines.append("juris collect riksdagen --type prop --session 2024/25")
+    lines.append("")
+    lines.append("# Collect all SOU since a date, to a custom directory")
+    lines.append("juris --data-dir ./my-data collect-type sou --since 2024-01-01")
+    lines.append("")
+    lines.append("# Collect EU regulations (limit 10, metadata only)")
+    lines.append("juris collect eur_lex --type eu_reg --limit 10 --skip-content")
+    lines.append("")
+    lines.append("# Collect everything (dry run to preview plan)")
+    lines.append("juris collect-all --dry-run")
+    lines.append("")
+    lines.append("# Search collected documents")
+    lines.append("juris search 'yttrandefrihet' --type prop --local-only")
+    lines.append("```")
+
+    return "\n".join(lines)
+
+
+def _print_agent_help(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    """Eager callback for --help-agent: print reference prompt and exit."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(_generate_agent_help())
+    ctx.exit()
+
 
 def _parse_date(value: str | None) -> date | None:
     if value is None:
@@ -90,6 +250,14 @@ class _VerboseReporter:
 
 
 @click.group()
+@click.option(
+    "--help-agent",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=_print_agent_help,
+    help="Print a reference prompt for AI agents and exit.",
+)
 @click.option(
     "--data-dir",
     type=click.Path(),
