@@ -9,6 +9,22 @@ description = "Swedish legal data collection tool"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing",
+]
+
+[project.urls]
+Homepage = "https://github.com/niclaslindstedt/juris"
+Repository = "https://github.com/niclaslindstedt/juris"
+Issues = "https://github.com/niclaslindstedt/juris/issues"
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2",
