@@ -103,9 +103,7 @@ def setup_file_logging(log_dir: Path, source: str, doc_type: str) -> logging.Fil
     log_file = log_dir / f"{stem}.log"
     handler = logging.FileHandler(log_file, encoding="utf-8")
     handler.setLevel(logging.DEBUG)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     logging.getLogger().addHandler(handler)
     return handler
 
@@ -209,9 +207,7 @@ class CollectionLogger:
             total_failed=self._failed,
             total_warnings=self._warned,
         )
-        self._jsonl_file.write(
-            json.dumps(summary.model_dump(), ensure_ascii=False) + "\n"
-        )
+        self._jsonl_file.write(json.dumps(summary.model_dump(), ensure_ascii=False) + "\n")
         self._jsonl_file.close()
         logging.getLogger().removeHandler(self._capture)
 
@@ -221,9 +217,7 @@ class CollectionLogger:
         return doc_id in self._skipped_ids
 
     def _write_entry(self, entry: DocumentLogEntry) -> None:
-        self._jsonl_file.write(
-            json.dumps(entry.model_dump(), ensure_ascii=False) + "\n"
-        )
+        self._jsonl_file.write(json.dumps(entry.model_dump(), ensure_ascii=False) + "\n")
         self._jsonl_file.flush()
 
 
@@ -249,10 +243,12 @@ class CompositeProgress:
         self._logger.on_save(doc_id, path)
         if hasattr(self._ui, "on_save"):
             self._ui.on_save(doc_id, path)
+
     def on_skip(self, doc_id: str) -> None:
         self._logger.on_skip(doc_id)
         if hasattr(self._ui, "on_skip"):
             self._ui.on_skip(doc_id)
+
     def on_finish(self) -> None:
         self._logger.on_finish()
         if hasattr(self._ui, "on_finish"):

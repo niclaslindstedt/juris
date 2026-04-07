@@ -575,8 +575,7 @@ def search(
     if not local_only:
         if source and source not in searchable:
             click.echo(
-                f"Note: '{source}' does not support remote search. "
-                f"Searching local documents only."
+                f"Note: '{source}' does not support remote search. Searching local documents only."
             )
             local_only = True
 
