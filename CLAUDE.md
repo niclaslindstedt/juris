@@ -9,13 +9,15 @@
 ```
 src/juris/
 ├── cli.py              # Click CLI (collect, collect-type, collect-all, status, stats, man)
+├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, DocType, Source, Attachment)
 ├── storage.py          # Dual-format file storage (JSON + Markdown with YAML frontmatter)
 ├── state.py            # Incremental collection state tracking (.state/ directory)
 ├── utils.py            # Shared utilities (rate limiting, text extraction, ID building)
 ├── pdf.py              # PDF text extraction via pymupdf
-└── collectors/         # Source-specific async collectors
-    ├── base.py         # Abstract BaseCollector (retry, rate limiting, HTTP)
+└── collectors/         # Source-specific async collectors (auto-discovered)
+    ├── __init__.py     # Auto-discovery + backward-compatible re-exports
+    ├── base.py         # BaseCollector ABC, registry, __init_subclass__ auto-registration
     ├── riksdagen.py    # Riksdagen JSON API
     ├── regeringen.py   # Regeringen.se web scraper
     ├── domstol.py      # Court decisions REST API
@@ -29,6 +31,7 @@ tests/
 ├── conftest.py         # Pytest fixtures and helpers
 ├── test_e2e.py         # End-to-end tests (@e2e marker, hits live APIs)
 ├── test_parsers.py     # Parser validation tests
+├── test_registry.py    # Collector auto-discovery and registry tests
 ├── test_retry.py       # Retry logic tests
 └── test_validate.py    # Document validation tests
 docs/
@@ -65,6 +68,24 @@ pytest -m e2e                  # Run e2e tests (live APIs, slow)
 
 - Use **conventional commits** for all commit messages (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `test:`)
 - PR titles follow conventional commit style as well
+
+## Adding a New Collector
+
+Collectors are auto-discovered via `BaseCollector.__init_subclass__`. To add one:
+
+1. Add the source name to the `Source` enum in `models.py`
+2. Create `src/juris/collectors/mysource.py`:
+   ```python
+   class MyCollector(BaseCollector):
+       source = Source.MY_SOURCE
+       supported_doc_types = [DocType.SOME_TYPE]
+       preferred_for = [DocType.SOME_TYPE]  # optional — wins when multiple providers exist
+
+       async def collect(self, doc_type, *, session=None, since=None, until=None,
+                         limit=None, skip_content=False) -> AsyncIterator[Document]: ...
+       async def get_document(self, source_id: str) -> Document | None: ...
+   ```
+3. No changes needed in `cli.py`, `__init__.py`, or any registry file.
 
 ## Important Notes
 

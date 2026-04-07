@@ -14,6 +14,10 @@ from juris.models import DocType, Document, Source
 class DummyCollector(BaseCollector):
     """Minimal concrete collector for testing base class methods."""
 
+    # Use a dedicated flag to prevent this test double from being registered
+    # in the global collector registry (which would overwrite a real collector).
+    _skip_registration = True
+
     source = Source.RIKSDAGEN
     supported_doc_types = [DocType.PROP]
 
