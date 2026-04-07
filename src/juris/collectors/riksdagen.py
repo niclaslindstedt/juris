@@ -144,7 +144,7 @@ class RiksdagenCollector(BaseCollector):
             for paragraph in re.split(r"\n{2,}", text):
                 stripped = paragraph.strip()
                 # Skip short lines (headings, metadata) and the title itself
-                if len(stripped) > 80 and stripped != item.get("titel", ""):
+                if len(stripped) > 60 and stripped != item.get("titel", ""):
                     summary = stripped[:500]
                     break
 

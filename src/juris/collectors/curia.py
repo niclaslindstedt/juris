@@ -162,7 +162,7 @@ class CjeuCollector(BaseCollector):
                         if not doc.summary:
                             for paragraph in re.split(r"\n{2,}", text):
                                 stripped = paragraph.strip()
-                                if len(stripped) > 80:
+                                if len(stripped) > 60:
                                     doc.summary = stripped[:500]
                                     break
 
