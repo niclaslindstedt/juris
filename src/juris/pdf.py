@@ -102,7 +102,7 @@ def _extract_from_doc(doc: pymupdf.Document, label: str) -> str | None:
     try:
         pages: list[str] = []
         for page in doc:  # type: ignore[attr-defined]
-            pages.append(page.get_text())  # type: ignore[no-untyped-call]
+            pages.append(page.get_text())
         doc.close()  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to extract text from PDF: %s", label)

@@ -52,7 +52,12 @@ class HudocCollector(BaseCollector):
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit)
 
-    async def _search(self, query: str, start: int = 0, length: int = PAGE_SIZE) -> list[dict[str, Any]]:
+    async def _search(
+        self,
+        query: str,
+        start: int = 0,
+        length: int = PAGE_SIZE,
+    ) -> list[dict[str, Any]]:
         """Execute a HUDOC search and return result items."""
         await self._limiter.wait()
         client = await self._get_client()
@@ -178,10 +183,10 @@ class HudocCollector(BaseCollector):
             if resp.status_code == 200 and len(resp.content) > 500:
                 from juris.pdf import extract_text_from_bytes
 
-                text: str | None = extract_text_from_bytes(resp.content)
-                if text and len(text) > 100:
-                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(text), item_id)
-                    return text, None
+                pdf_text = extract_text_from_bytes(resp.content)
+                if pdf_text and len(pdf_text) > 100:
+                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(pdf_text), item_id)
+                    return pdf_text, None
         except httpx.HTTPError as e:
             logger.debug("HUDOC PDF unavailable for %s: %s", item_id, e)
 

@@ -37,6 +37,7 @@ tests/
 docs/
 └── parsing-rules.md    # Parsing pipeline documentation
 man/                    # Manual pages (.1 files) for CLI commands
+Makefile                # Dev commands (install, lint, typecheck, test)
 scripts/
 ├── release.sh          # Semantic version bump + tag creation
 ├── update-version.sh   # Updates version in pyproject.toml
@@ -71,11 +72,21 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 ## Development
 
 ```bash
-pip install -e ".[dev]"        # Install with dev dependencies
-ruff check src/                # Lint
-mypy src/                      # Type check (strict mode)
-pytest tests/                  # Run unit tests
-pytest -m e2e                  # Run e2e tests (live APIs, slow)
+make install                   # Create .venv and install with dev dependencies
+make lint                      # Lint
+make typecheck                 # Type check (strict mode)
+make test                      # Run unit tests
+make test-e2e                  # Run e2e tests (live APIs, slow)
+```
+
+Or manually:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/python -m ruff check src/
+.venv/bin/mypy src/
+.venv/bin/pytest tests/ --ignore=tests/test_e2e.py
 ```
 
 - Line length: 100
