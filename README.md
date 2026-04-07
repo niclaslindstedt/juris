@@ -1,5 +1,7 @@
 # juris
 
+[![Website](https://img.shields.io/badge/website-juris-d4a843?style=flat&logo=github)](https://niclaslindstedt.github.io/juris/)
+
 ### Swedish Parliament
 [![prop](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-prop.yml)
 [![mot](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mot.yml/badge.svg)](https://github.com/niclaslindstedt/juris/actions/workflows/e2e-mot.yml)

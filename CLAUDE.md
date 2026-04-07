@@ -41,10 +41,20 @@ scripts/
 ├── release.sh          # Semantic version bump + tag creation
 ├── update-version.sh   # Updates version in pyproject.toml
 └── generate-changelog.sh # Changelog generation from conventional commits
+website/                # GitHub Pages website (React + Vite + Tailwind)
+├── scripts/
+│   └── extract-data.ts # Extracts data from Python source → sourceData.ts
+├── src/
+│   ├── components/     # React components (Navbar, Hero, Terminal, etc.)
+│   └── data/
+│       └── sourceData.ts # AUTO-GENERATED from Python source
+├── package.json
+└── vite.config.ts
 .github/workflows/
 ├── ci.yml              # Lint, typecheck, test on push/PR to main
 ├── release.yml         # Build + publish to PyPI on tag push
 ├── version-bump.yml    # Manual workflow_dispatch to bump version
+├── deploy-website.yml  # Build + deploy GitHub Pages website
 └── e2e-*.yml           # Per-document-type E2E test workflows
 ```
 
