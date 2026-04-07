@@ -2,13 +2,16 @@ VENV := .venv
 PYTHON := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: venv install lint typecheck format test test-e2e clean
+.PHONY: venv install run lint typecheck format test test-e2e clean
 
 venv:
 	python3 -m venv $(VENV)
 
 install: venv
 	$(PIP) install -e ".[dev]"
+
+run: install
+	$(VENV)/bin/juris $(ARGS)
 
 lint:
 	$(PYTHON) -m ruff check src/
