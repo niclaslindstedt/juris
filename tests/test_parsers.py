@@ -112,6 +112,18 @@ class TestParseDesignation:
         # lagr has a pattern for "Lagrådsremiss YYYY:N"
         assert _parse_designation("Lagrådsremiss 2025:3", DocType.LAGR) == ("3", "2025")
 
+    def test_ds_concatenated_url(self) -> None:
+        assert _parse_designation("ds-20262", DocType.DS) == ("2", "2026")
+
+    def test_ds_concatenated_no_separator(self) -> None:
+        assert _parse_designation("ds20262", DocType.DS) == ("2", "2026")
+
+    def test_ds_concatenated_double_digit(self) -> None:
+        assert _parse_designation("ds202612", DocType.DS) == ("12", "2026")
+
+    def test_ds_concatenated_url_with_slash(self) -> None:
+        assert _parse_designation("/ds-20268/", DocType.DS) == ("8", "2026")
+
     def test_no_match(self) -> None:
         assert _parse_designation("No designation here", DocType.PROP) == ("", None)
 
