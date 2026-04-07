@@ -37,6 +37,15 @@ tests/
 docs/
 └── parsing-rules.md    # Parsing pipeline documentation
 man/                    # Manual pages (.1 files) for CLI commands
+scripts/
+├── release.sh          # Semantic version bump + tag creation
+├── update-version.sh   # Updates version in pyproject.toml
+└── generate-changelog.sh # Changelog generation from conventional commits
+.github/workflows/
+├── ci.yml              # Lint, typecheck, test on push/PR to main
+├── release.yml         # Build + publish to PyPI on tag push
+├── version-bump.yml    # Manual workflow_dispatch to bump version
+└── e2e-*.yml           # Per-document-type E2E test workflows
 ```
 
 ## Tech Stack
@@ -86,6 +95,21 @@ Collectors are auto-discovered via `BaseCollector.__init_subclass__`. To add one
        async def get_document(self, source_id: str) -> Document | None: ...
    ```
 3. No changes needed in `cli.py`, `__init__.py`, or any registry file.
+
+## Releasing
+
+Releases are automated via GitHub Actions:
+
+1. **Via GitHub UI**: Run the "Version Bump" workflow (`version-bump.yml`) with a bump type (patch/minor/major). This creates a git tag which triggers the release pipeline.
+2. **Via CLI**: Run `./scripts/release.sh [patch|minor|major]` from the main branch. Without an argument, the bump type is inferred from conventional commits.
+
+The release pipeline (`release.yml`) then:
+- Updates the version in `pyproject.toml`
+- Generates changelog from conventional commits
+- Publishes the package to PyPI
+- Creates a GitHub Release with release notes
+
+**Required secret**: `PYPI_TOKEN` must be configured in the `pypi-registry` GitHub environment.
 
 ## Important Notes
 
