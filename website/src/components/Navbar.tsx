@@ -25,6 +25,7 @@ export default function Navbar() {
           <a href={sectionHref("features")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Features</a>
           <a href={sectionHref("sources")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Sources</a>
           <a href={sectionHref("doc-types")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Doc Types</a>
+          <Link to="/docs" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Docs</Link>
           <Link to="/manual" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Manual</Link>
           <a href={sectionHref("getting-started")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Get Started</a>
           <a
@@ -62,6 +63,7 @@ export default function Navbar() {
           <a href={sectionHref("features")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Features</a>
           <a href={sectionHref("sources")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Sources</a>
           <a href={sectionHref("doc-types")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Doc Types</a>
+          <Link to="/docs" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Docs</Link>
           <Link to="/manual" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Manual</Link>
           <a href={sectionHref("getting-started")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Get Started</a>
           <a href="https://github.com/niclaslindstedt/juris" target="_blank" rel="noopener noreferrer" className="text-sm text-text-secondary hover:text-text-primary">GitHub</a>

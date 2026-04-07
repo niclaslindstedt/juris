@@ -5,6 +5,7 @@ import Features from "./components/Features";
 import Sources from "./components/Sources";
 import DocTypes from "./components/DocTypes";
 import GettingStarted from "./components/GettingStarted";
+import DocumentationPage from "./components/DocumentationPage";
 import ManualPage from "./components/ManualPage";
 import Footer from "./components/Footer";
 
@@ -27,6 +28,8 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/docs" element={<DocumentationPage />} />
+          <Route path="/docs/:slug" element={<DocumentationPage />} />
           <Route path="/manual" element={<ManualPage />} />
           <Route path="/manual/:command" element={<ManualPage />} />
         </Routes>

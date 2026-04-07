@@ -1,33 +1,51 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { MAN_PAGES } from "../data/sourceData";
+import { DOC_PAGES } from "../data/sourceData";
 import { renderMarkdown } from "./markdown";
 
-const PAGE_ORDER = ["juris", "collect", "collect-type", "collect-all", "status", "stats", "man"];
+const PAGE_ORDER = [
+  "overview",
+  "architecture",
+  "collectors",
+  "document-model",
+  "storage-format",
+  "data-sources",
+  "parsing-rules",
+];
 
-const pages = MAN_PAGES.map((p) => ({ slug: p.command }));
+const PAGE_LABELS: Record<string, string> = {
+  overview: "Overview",
+  architecture: "Architecture",
+  collectors: "Collectors",
+  "document-model": "Document Model",
+  "storage-format": "Storage Format",
+  "data-sources": "Data Sources",
+  "parsing-rules": "Parsing Rules",
+};
 
-export default function ManualPage() {
-  const { command: urlCommand } = useParams();
+const pages = DOC_PAGES.map((p) => ({ slug: p.slug }));
+
+export default function DocumentationPage() {
+  const { slug: urlSlug } = useParams();
   const navigate = useNavigate();
 
-  const sorted = PAGE_ORDER.map((cmd) => MAN_PAGES.find((p) => p.command === cmd)).filter(
+  const sorted = PAGE_ORDER.map((slug) => DOC_PAGES.find((p) => p.slug === slug)).filter(
     (p): p is NonNullable<typeof p> => p != null,
   );
 
-  const [active, setActive] = useState(urlCommand ?? sorted[0]?.command ?? "juris");
-  const page = sorted.find((p) => p.command === active) ?? sorted[0];
+  const [active, setActive] = useState(urlSlug ?? sorted[0]?.slug ?? "overview");
+  const page = sorted.find((p) => p.slug === active) ?? sorted[0];
 
   // Sync URL param to active state
   useEffect(() => {
-    if (urlCommand && sorted.some((p) => p.command === urlCommand)) {
-      setActive(urlCommand);
+    if (urlSlug && sorted.some((p) => p.slug === urlSlug)) {
+      setActive(urlSlug);
     }
-  }, [urlCommand, sorted]);
+  }, [urlSlug, sorted]);
 
-  function handleNavigate(cmd: string) {
-    setActive(cmd);
-    navigate(`/manual/${cmd}`, { replace: true });
+  function handleNavigate(slug: string) {
+    setActive(slug);
+    navigate(`/docs/${slug}`, { replace: true });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -35,9 +53,9 @@ export default function ManualPage() {
     <div className="pt-24 pb-20 px-6">
       <div className="mx-auto max-w-6xl">
         <div className="mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Manual</h1>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">Documentation</h1>
           <p className="text-text-secondary">
-            Complete reference documentation for every juris command.
+            Concepts, architecture, and guides for understanding how juris works.
           </p>
         </div>
 
@@ -47,15 +65,15 @@ export default function ManualPage() {
             <div className="lg:sticky lg:top-24 flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0">
               {sorted.map((p) => (
                 <button
-                  key={p.command}
-                  onClick={() => handleNavigate(p.command)}
+                  key={p.slug}
+                  onClick={() => handleNavigate(p.slug)}
                   className={`text-left text-sm font-mono px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
-                    active === p.command
+                    active === p.slug
                       ? "bg-accent/15 text-accent border border-accent/30"
                       : "text-text-secondary hover:text-text-primary hover:bg-surface-200"
                   }`}
                 >
-                  {p.command === "juris" ? "juris" : `juris ${p.command}`}
+                  {PAGE_LABELS[p.slug] ?? p.title}
                 </button>
               ))}
             </div>

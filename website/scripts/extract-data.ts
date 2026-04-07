@@ -4,7 +4,8 @@
  * Keeps the website in sync with the juris codebase by extracting:
  * - DocType and Source enums from models.py
  * - Collector metadata (supported doc types, preferred_for) from collectors/*.py
- * - Man page content from man/*.1
+ * - Man page content from man/*.md
+ * - Documentation pages from docs/*.md
  * - Version from pyproject.toml
  */
 
@@ -15,6 +16,7 @@ const ROOT = resolve(import.meta.dirname, "../..");
 const MODELS_PATH = join(ROOT, "src/juris/models.py");
 const COLLECTORS_DIR = join(ROOT, "src/juris/collectors");
 const MAN_DIR = join(ROOT, "man");
+const DOCS_DIR = join(ROOT, "docs");
 const PYPROJECT_PATH = join(ROOT, "pyproject.toml");
 const OUTPUT_PATH = resolve(import.meta.dirname, "../src/data/sourceData.ts");
 
@@ -196,6 +198,29 @@ function extractManPages(): ManPage[] {
   return pages;
 }
 
+interface DocPage {
+  slug: string;
+  title: string;
+  content: string;
+}
+
+function extractDocPages(): DocPage[] {
+  const pages: DocPage[] = [];
+  try {
+    const files = readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md")).sort();
+    for (const file of files) {
+      const slug = file.replace(/\.md$/, "");
+      const content = readFileSync(join(DOCS_DIR, file), "utf-8");
+      const titleMatch = content.match(/^#\s+(.+)/m);
+      const title = titleMatch?.[1] ?? slug;
+      pages.push({ slug, title, content });
+    }
+  } catch {
+    // docs dir may not exist
+  }
+  return pages;
+}
+
 // --- Main ---
 
 const modelsContent = readFileSync(MODELS_PATH, "utf-8");
@@ -203,6 +228,7 @@ const docTypes = extractEnum(modelsContent, "DocType");
 const sources = extractEnum(modelsContent, "Source");
 const version = extractVersion();
 const manPages = extractManPages();
+const docPages = extractDocPages();
 
 // Build name -> value lookup for DocType
 const docTypesByName = new Map(docTypes.map((dt) => [dt.name, dt.value]));
@@ -270,6 +296,12 @@ export interface ManPage {
   content: string;
 }
 
+export interface DocPage {
+  slug: string;
+  title: string;
+  content: string;
+}
+
 export const DOC_TYPES: DocTypeInfo[] = ${JSON.stringify(docTypes, null, 2)};
 
 export const SOURCES: SourceInfo[] = ${JSON.stringify(sourceData, null, 2)};
@@ -277,6 +309,8 @@ export const SOURCES: SourceInfo[] = ${JSON.stringify(sourceData, null, 2)};
 export const DOC_TYPE_CATEGORIES: Record<string, string[]> = ${JSON.stringify(categories, null, 2)};
 
 export const MAN_PAGES: ManPage[] = ${JSON.stringify(manPages, null, 2)};
+
+export const DOC_PAGES: DocPage[] = ${JSON.stringify(docPages, null, 2)};
 `;
 
 mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
@@ -287,3 +321,4 @@ console.log(`  DocTypes: ${docTypes.length}`);
 console.log(`  Sources: ${sourceData.length}`);
 console.log(`  Collectors: ${collectors.length}`);
 console.log(`  Man pages: ${manPages.length}`);
+console.log(`  Doc pages: ${docPages.length}`);
