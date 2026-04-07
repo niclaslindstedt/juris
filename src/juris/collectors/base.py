@@ -1,4 +1,4 @@
-"""Abstract base collector interface."""
+"""Abstract base collector interface and auto-discovery registry."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import date
 from pathlib import Path
+from typing import ClassVar
 
 import httpx
 
@@ -28,13 +29,42 @@ _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_BACKOFF_BASE = 1.0  # seconds
 _DEFAULT_BACKOFF_FACTOR = 2.0
 
+# ---------------------------------------------------------------------------
+# Collector registry — populated automatically via __init_subclass__
+# ---------------------------------------------------------------------------
+
+_COLLECTOR_REGISTRY: dict[str, type[BaseCollector]] = {}
+
 
 class BaseCollector(ABC):
-    """Base class for all data source collectors."""
+    """Base class for all data source collectors.
 
-    source: Source
-    supported_doc_types: list[DocType]
+    Concrete subclasses are automatically registered by source name when the
+    class is defined.  To declare that a collector is the *preferred* provider
+    for certain document types, set the ``preferred_for`` class variable::
+
+        class MyCollector(BaseCollector):
+            source = Source.MY_SOURCE
+            supported_doc_types = [DocType.FOO, DocType.BAR]
+            preferred_for = [DocType.FOO]
+    """
+
+    source: ClassVar[Source]
+    supported_doc_types: ClassVar[list[DocType]]
+    preferred_for: ClassVar[list[DocType]] = []
     _limiter: RateLimiter
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        # Only register concrete collectors (those without abstract methods).
+        # Subclasses can set ``_skip_registration = True`` to opt out
+        # (useful for test doubles that reuse an existing source name).
+        if getattr(cls, "_skip_registration", False):
+            return
+        if not getattr(cls, "__abstractmethods__", set()):
+            source_val = getattr(cls, "source", None)
+            if source_val is not None:
+                _COLLECTOR_REGISTRY[str(source_val)] = cls
 
     def __init__(
         self,
@@ -240,3 +270,79 @@ class BaseCollector(ABC):
                 doc.text = primary_text
 
         return doc
+
+
+# ---------------------------------------------------------------------------
+# Registry accessor functions
+# ---------------------------------------------------------------------------
+
+_discovery_done = False
+
+
+def _ensure_discovered() -> None:
+    """Import all collector modules so every subclass is registered.
+
+    This is called lazily the first time a registry accessor is used,
+    avoiding import-order problems when individual collector modules are
+    imported directly (e.g. ``from juris.collectors.domstol import …``).
+    """
+    global _discovery_done  # noqa: PLW0603
+    if _discovery_done:
+        return
+    _discovery_done = True
+
+    import importlib
+    import pkgutil
+    from pathlib import Path
+
+    pkg_dir = str(Path(__file__).resolve().parent)
+    for info in pkgutil.iter_modules([pkg_dir]):
+        if not info.name.startswith("_"):
+            importlib.import_module(f"juris.collectors.{info.name}")
+
+
+def get_registry() -> dict[str, type[BaseCollector]]:
+    """Return a copy of the collector registry (source name -> class)."""
+    _ensure_discovered()
+    return dict(_COLLECTOR_REGISTRY)
+
+
+def get_collector_class(source_name: str) -> type[BaseCollector]:
+    """Get a collector class by source name.  Raises *KeyError* if unknown."""
+    _ensure_discovered()
+    return _COLLECTOR_REGISTRY[source_name]
+
+
+def get_doc_type_providers() -> dict[str, list[str]]:
+    """Map each doc-type value to the list of source names that support it."""
+    _ensure_discovered()
+    mapping: dict[str, list[str]] = {}
+    for source_name, cls in _COLLECTOR_REGISTRY.items():
+        for dt in cls.supported_doc_types:
+            mapping.setdefault(dt.value, []).append(source_name)
+    return mapping
+
+
+def get_preferred_providers() -> dict[str, str]:
+    """Build the preferred-provider map from collector declarations.
+
+    Doc types with a single provider are automatically preferred.
+    Explicit ``preferred_for`` declarations on collector classes override
+    when multiple providers exist.
+    """
+    _ensure_discovered()
+    doc_type_providers = get_doc_type_providers()
+
+    # Default: sole-provider doc types get their only provider
+    preferred: dict[str, str] = {
+        dt: providers[0]
+        for dt, providers in doc_type_providers.items()
+        if len(providers) == 1
+    }
+
+    # Explicit overrides from collector classes
+    for source_name, cls in _COLLECTOR_REGISTRY.items():
+        for dt in cls.preferred_for:
+            preferred[dt.value] = source_name
+
+    return preferred

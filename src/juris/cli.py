@@ -10,63 +10,21 @@ from pathlib import Path
 
 import click
 
-from juris.collectors.curia import CjeuCollector
-from juris.collectors.domstol import DomstolCollector
-from juris.collectors.eurlex import EurLexCollector
-from juris.collectors.hudoc import HudocCollector
-from juris.collectors.jo_jk import JoJkCollector
-from juris.collectors.lagrummet import LagrummetCollector
-from juris.collectors.regeringen import RegeringenCollector
-from juris.collectors.riksdagen import RiksdagenCollector
-from juris.models import DocType, Source
-from juris.state import load_state, save_state
-from juris.storage import document_exists, save_document
+from juris.collectors import (
+    get_collector_class,
+    get_doc_type_providers,
+    get_preferred_providers,
+    get_registry,
+)
+from juris.models import DocType
+from juris.pipeline import collect_from_source
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DATA_DIR = Path("data")
 
-COLLECTORS = {
-    "riksdagen": RiksdagenCollector,
-    "regeringen": RegeringenCollector,
-    "domstol": DomstolCollector,
-    "jo_jk": JoJkCollector,
-    "lagrummet": LagrummetCollector,
-    "eur_lex": EurLexCollector,
-    "curia": CjeuCollector,
-    "hudoc": HudocCollector,
-}
-
-
-def _build_doc_type_providers() -> dict[str, list[str]]:
-    """Map each doc_type to the list of source names supporting it."""
-    mapping: dict[str, list[str]] = {}
-    for source_name, collector_cls in COLLECTORS.items():
-        for dt in collector_cls.supported_doc_types:
-            mapping.setdefault(dt.value, []).append(source_name)
-    return mapping
-
-
-DOC_TYPE_PROVIDERS = _build_doc_type_providers()
-
-# Best provider for each document type when multiple sources overlap.
-# Selection criteria:
-#   - Structured API > web scraping (reliability)
-#   - Richer metadata and faster collection rate
-#
-# Riksdagen (JSON API) beats Regeringen (scraping) for: prop, sou, dir, skr.
-# Regeringen is kept exclusively for ds and lagr (no other source has them).
-PREFERRED_PROVIDERS: dict[str, str] = {
-    dt: providers[0] for dt, providers in DOC_TYPE_PROVIDERS.items()
-    if len(providers) == 1
-}
-# Explicit overrides for doc types with multiple providers
-PREFERRED_PROVIDERS.update({
-    "prop": "riksdagen",  # Structured API, reliable beteckning field
-    "sou": "riksdagen",   # Structured API, faster pagination
-    "dir": "riksdagen",   # Structured API, built-in session filtering
-    "skr": "riksdagen",   # Structured API, single request per doc
-})
+# Resolved at import time (auto-discovery has already run).
+_COLLECTOR_NAMES = sorted(get_registry().keys())
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -76,101 +34,60 @@ def _parse_date(value: str | None) -> date | None:
 
 
 class _ProgressTracker:
-    """Simple progress tracker for collection operations."""
+    """CLI progress reporter that implements :class:`ProgressCallback`."""
 
     def __init__(self, label: str, total: int | None = None) -> None:
         self.label = label
         self.total = total
-        self.current = 0
+        self._collected = 0
+        self._skipped = 0
         self._last_line_len = 0
 
-    def update(self, collected: int, skipped: int) -> None:
-        self.current = collected + skipped
-        self._render(collected, skipped)
+    # -- ProgressCallback protocol ------------------------------------------
 
-    def _render(self, collected: int, skipped: int) -> None:
+    def on_save(self, doc_id: str, path: Path) -> None:
+        self._collected += 1
+        self._render()
+
+    def on_skip(self, doc_id: str) -> None:
+        self._skipped += 1
+        self._render()
+
+    def on_finish(self) -> None:
+        click.echo()  # newline after progress
+
+    # -- internal -----------------------------------------------------------
+
+    def _render(self) -> None:
+        collected, skipped = self._collected, self._skipped
+        current = collected + skipped
         if self.total:
-            pct = min(100, int(self.current / self.total * 100))
+            pct = min(100, int(current / self.total * 100))
             bar_width = 20
             filled = int(bar_width * pct / 100)
             bar = "█" * filled + "░" * (bar_width - filled)
-            line = f"\r  {self.label}: {bar} {pct}% ({collected} saved, {skipped} skipped)"
+            line = (
+                f"\r  {self.label}: {bar} {pct}% "
+                f"({collected} saved, {skipped} skipped)"
+            )
         else:
             line = f"\r  {self.label}: {collected} saved, {skipped} skipped"
-        # Pad with spaces to clear previous longer output
         padded = line.ljust(self._last_line_len)
         self._last_line_len = len(line)
         click.echo(padded, nl=False)
 
-    def finish(self) -> None:
-        click.echo()  # newline after progress
 
+class _VerboseReporter:
+    """Line-per-document reporter that implements :class:`ProgressCallback`."""
 
-async def _collect_from_source(
-    source_name: str,
-    dt: DocType,
-    data_dir: Path,
-    *,
-    session: str | None = None,
-    since: date | None = None,
-    until: date | None = None,
-    limit: int | None = None,
-    skip_existing: bool = True,
-    skip_content: bool = False,
-    progress: bool = False,
-) -> tuple[int, int]:
-    """Run collection for a single (source, doc_type) pair.
+    def on_save(self, doc_id: str, path: Path) -> None:
+        click.echo(f"  saved {doc_id} -> {path}")
 
-    Returns (collected_count, skipped_count).
-    """
-    src = Source(source_name)
-    collector = COLLECTORS[source_name]()
-    state = load_state(data_dir, src, dt)
+    def on_skip(self, doc_id: str) -> None:
+        click.echo(f"  skip {doc_id} (exists)")
 
-    collected = 0
-    skipped = 0
-    tracker = _ProgressTracker(f"{source_name}/{dt.value}", total=limit) if progress else None
-
-    try:
-        async for doc in collector.collect(
-            dt,
-            session=session,
-            since=since,
-            until=until,
-            limit=limit,
-            skip_content=skip_content,
-        ):
-            exists = document_exists(
-                doc.doc_id, doc.doc_type, doc.session, data_dir,
-            )
-            if skip_existing and exists:
-                skipped += 1
-                if tracker:
-                    tracker.update(collected, skipped)
-                else:
-                    click.echo(f"  skip {doc.doc_id} (exists)")
-                continue
-
-            if not skip_content:
-                doc = await collector.download_attachments(doc, data_dir)
-
-            path = save_document(doc, data_dir)
-            collected += 1
-            if tracker:
-                tracker.update(collected, skipped)
-            else:
-                click.echo(f"  saved {doc.doc_id} -> {path}")
-
-            state.total_collected += 1
-            if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
-                state.last_fetched_date = str(doc.date)
-    finally:
-        if tracker:
-            tracker.finish()
-        await collector.close()
-
-    save_state(state, data_dir)
-    return collected, skipped
+    def on_finish(self) -> None:
+        pass
 
 
 @click.group()
@@ -191,7 +108,7 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
 
 
 @main.command()
-@click.argument("source", type=click.Choice(list(COLLECTORS.keys())))
+@click.argument("source", type=click.Choice(_COLLECTOR_NAMES))
 @click.option(
     "--type", "doc_type", required=True,
     type=click.Choice([dt.value for dt in DocType]),
@@ -225,7 +142,7 @@ def collect(
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
 
-    collector_cls = COLLECTORS[source]
+    collector_cls = get_collector_class(source)
     if dt not in collector_cls.supported_doc_types:
         supported = ", ".join(t.value for t in collector_cls.supported_doc_types)
         raise click.UsageError(
@@ -234,7 +151,7 @@ def collect(
         )
 
     async def _run() -> None:
-        collected, skipped = await _collect_from_source(
+        collected, skipped = await collect_from_source(
             source,
             dt,
             data_dir,
@@ -244,6 +161,7 @@ def collect(
             limit=limit,
             skip_existing=skip_existing,
             skip_content=skip_content,
+            progress=_VerboseReporter(),
         )
         click.echo(f"\nDone: {collected} collected, {skipped} skipped")
 
@@ -291,16 +209,19 @@ def collect_type(
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
 
+    doc_type_providers = get_doc_type_providers()
+    preferred_providers = get_preferred_providers()
+
     if all_providers:
-        providers = DOC_TYPE_PROVIDERS.get(doc_type, [])
+        providers = doc_type_providers.get(doc_type, [])
     else:
-        preferred = PREFERRED_PROVIDERS.get(doc_type)
+        preferred = preferred_providers.get(doc_type)
         providers = [preferred] if preferred else []
 
     if not providers:
         raise click.UsageError(f"No providers found for document type '{doc_type}'.")
 
-    all_available = DOC_TYPE_PROVIDERS.get(doc_type, [])
+    all_available = doc_type_providers.get(doc_type, [])
     skipped = [p for p in all_available if p not in providers]
 
     if dry_run:
@@ -322,7 +243,10 @@ def collect_type(
 
         for i, source_name in enumerate(providers, 1):
             click.echo(f"\n[{i}/{len(providers)}] {source_name}")
-            collected, skipped = await _collect_from_source(
+            tracker = _ProgressTracker(
+                f"{source_name}/{dt.value}", total=limit,
+            )
+            collected, skipped_count = await collect_from_source(
                 source_name,
                 dt,
                 data_dir,
@@ -332,11 +256,11 @@ def collect_type(
                 limit=limit,
                 skip_existing=skip_existing,
                 skip_content=skip_content,
-                progress=True,
+                progress=tracker,
             )
-            click.echo(f"  {source_name}: {collected} collected, {skipped} skipped")
+            click.echo(f"  {source_name}: {collected} collected, {skipped_count} skipped")
             grand_collected += collected
-            grand_skipped += skipped
+            grand_skipped += skipped_count
 
         return grand_collected, grand_skipped
 
@@ -397,10 +321,13 @@ def collect_all(
     """
     data_dir: Path = ctx.obj["data_dir"]
 
+    preferred_providers = get_preferred_providers()
+    doc_type_providers = get_doc_type_providers()
+
     # Build the plan: list of (doc_type, source_name) pairs
     plan: list[tuple[DocType, str]] = []
     for dt in DocType:
-        source_name = PREFERRED_PROVIDERS.get(dt.value)
+        source_name = preferred_providers.get(dt.value)
         if source_name:
             plan.append((dt, source_name))
         else:
@@ -409,7 +336,7 @@ def collect_all(
     if dry_run:
         click.echo("Collection plan (best provider per document type):\n")
         for dt, source_name in plan:
-            providers = DOC_TYPE_PROVIDERS.get(dt.value, [])
+            providers = doc_type_providers.get(dt.value, [])
             alt = [p for p in providers if p != source_name]
             alt_str = f"  (skipped: {', '.join(alt)})" if alt else ""
             click.echo(f"  {dt.value:12s} <- {source_name}{alt_str}")
@@ -446,7 +373,10 @@ def collect_all(
                 async with semaphore:
                     for dt in doc_types:
                         click.echo(f"  Starting {dt.value} <- {source_name}")
-                        collected, skipped = await _collect_from_source(
+                        tracker = _ProgressTracker(
+                            f"{source_name}/{dt.value}", total=limit,
+                        )
+                        collected, skipped = await collect_from_source(
                             source_name,
                             dt,
                             data_dir,
@@ -455,7 +385,7 @@ def collect_all(
                             limit=limit,
                             skip_existing=skip_existing,
                             skip_content=skip_content,
-                            progress=True,
+                            progress=tracker,
                         )
                         click.echo(
                             f"  Done {source_name}/{dt.value}: "
@@ -483,7 +413,10 @@ def collect_all(
 
             for i, (dt, source_name) in enumerate(plan, 1):
                 click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {source_name}")
-                collected, skipped = await _collect_from_source(
+                tracker = _ProgressTracker(
+                    f"{source_name}/{dt.value}", total=limit,
+                )
+                collected, skipped = await collect_from_source(
                     source_name,
                     dt,
                     data_dir,
@@ -492,7 +425,7 @@ def collect_all(
                     limit=limit,
                     skip_existing=skip_existing,
                     skip_content=skip_content,
-                    progress=True,
+                    progress=tracker,
                 )
                 click.echo(
                     f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped"

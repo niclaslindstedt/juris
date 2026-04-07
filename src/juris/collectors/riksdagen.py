@@ -62,6 +62,7 @@ class RiksdagenCollector(BaseCollector):
 
     source = Source.RIKSDAGEN
     supported_doc_types = list(_DOCTYPE_MAP.keys())
+    preferred_for = [DocType.PROP, DocType.SOU, DocType.DIR, DocType.SKR]
 
     def __init__(self, rate_limit: float = 0.5) -> None:
         super().__init__(rate_limit=rate_limit, base_url=BASE_URL)
