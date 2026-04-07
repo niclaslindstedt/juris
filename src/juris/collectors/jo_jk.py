@@ -119,6 +119,7 @@ class JoJkCollector(BaseCollector):
         self,
         since: date | None = None,
         until: date | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, str]]:
         """Parse JO resolve-sitemap XML files to collect decision URLs.
 
@@ -129,6 +130,9 @@ class JoJkCollector(BaseCollector):
         results: list[dict[str, str]] = []
 
         for i in range(1, _JO_SITEMAP_COUNT + 1):
+            if limit and len(results) >= limit:
+                break
+            logger.info("JO: fetching sitemap %d/%d...", i, _JO_SITEMAP_COUNT)
             sitemap_url = f"{JO_BASE_URL}/resolve-sitemap{i}.xml"
             xml_text = await self._fetch_html(sitemap_url)
             if not xml_text:
@@ -179,6 +183,7 @@ class JoJkCollector(BaseCollector):
         self,
         since: date | None = None,
         until: date | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, str]]:
         """Scrape JK search results via POST to collect decision URLs.
 
@@ -192,6 +197,9 @@ class JoJkCollector(BaseCollector):
         to_date = until.isoformat() if until else date.today().isoformat()
 
         while True:
+            if limit and len(results) >= limit:
+                break
+            logger.info("JK: fetching search page %d...", page)
             form_data: dict[str, str | list[str]] = {
                 "diarienummer": "",
                 "search": "",
@@ -528,10 +536,14 @@ class JoJkCollector(BaseCollector):
 
         # Discover decision URLs
         if doc_type == DocType.JO:
-            urls = await self._fetch_jo_sitemap_urls(since=since, until=until)
+            urls = await self._fetch_jo_sitemap_urls(
+                since=since, until=until, limit=limit,
+            )
             items = [{"url": u["url"]} for u in urls]
         else:
-            items = await self._fetch_jk_listing_urls(since=since, until=until)
+            items = await self._fetch_jk_listing_urls(
+                since=since, until=until, limit=limit,
+            )
 
         count = 0
         for item in items:
