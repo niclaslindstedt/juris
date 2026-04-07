@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Regex for föreskrift designations: "AFS 2023:1", "HSLF-FS 2026:3", etc.
 _FORESKRIFT_RE = re.compile(r"([A-ZÅÄÖ][\w-]*FS)\s+(\d{4}):(\d+)")
 
+
 @dataclass
 class _AgencyConfig:
     """Configuration for scraping a specific agency's författningssamling."""
@@ -104,9 +105,7 @@ class LagrummetCollector(BaseCollector):
     # Listing page parsing
     # ------------------------------------------------------------------
 
-    def _parse_listing_page(
-        self, html: str, agency: _AgencyConfig
-    ) -> list[dict[str, str]]:
+    def _parse_listing_page(self, html: str, agency: _AgencyConfig) -> list[dict[str, str]]:
         """Parse a listing page and return items with url, title, designation."""
         soup = BeautifulSoup(html, "lxml")
         items: list[dict[str, str]] = []
@@ -130,13 +129,15 @@ class LagrummetCollector(BaseCollector):
                 continue
 
             full_url = urljoin(agency.base_url, href)
-            items.append({
-                "url": full_url,
-                "title": text,
-                "prefix": prefix,
-                "year": m.group(2),
-                "number": m.group(3),
-            })
+            items.append(
+                {
+                    "url": full_url,
+                    "title": text,
+                    "prefix": prefix,
+                    "year": m.group(2),
+                    "number": m.group(3),
+                }
+            )
 
         return items
 

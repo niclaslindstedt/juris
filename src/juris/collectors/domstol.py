@@ -28,8 +28,9 @@ def _strip_court_header(text: str) -> str:
         re.DOTALL,
     )
     if m:
-        return text[m.end():].lstrip()
+        return text[m.end() :].lstrip()
     return text
+
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,9 @@ class DomstolCollector(BaseCollector):
         return doc
 
     async def get_document(
-        self, source_id: str, doc_type: DocType | None = None,
+        self,
+        source_id: str,
+        doc_type: DocType | None = None,
     ) -> Document | None:
         """Fetch a single publication by its UUID."""
         data = await self._fetch_json(f"/api/v1/publiceringar/{source_id}")

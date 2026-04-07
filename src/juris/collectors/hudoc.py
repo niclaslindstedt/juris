@@ -51,9 +51,7 @@ class HudocCollector(BaseCollector):
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit)
 
-    async def _search(
-        self, query: str, start: int = 0, length: int = PAGE_SIZE
-    ) -> list[dict]:
+    async def _search(self, query: str, start: int = 0, length: int = PAGE_SIZE) -> list[dict]:
         """Execute a HUDOC search and return result items."""
         await self._limiter.wait()
         client = await self._get_client()
@@ -97,7 +95,9 @@ class HudocCollector(BaseCollector):
                 doc_date = date.today()
         except ValueError:
             logger.warning(
-                "Could not parse date '%s' for %s, using today", judgment_date_str, item_id,
+                "Could not parse date '%s' for %s, using today",
+                judgment_date_str,
+                item_id,
             )
             doc_date = date.today()
 
@@ -135,7 +135,8 @@ class HudocCollector(BaseCollector):
         )
 
     async def _fetch_full_text(
-        self, item_id: str,
+        self,
+        item_id: str,
     ) -> tuple[str | None, str | None]:
         """Try to fetch the full judgment text from HUDOC.
 
@@ -152,10 +153,7 @@ class HudocCollector(BaseCollector):
         # Strategy 1: Try language-specific HTML endpoints (Swedish, English, French)
         for lang_code in ("SWE", "ENG", "FRE"):
             await self._limiter.wait()
-            html_url = (
-                "https://hudoc.echr.coe.int"
-                f"/app/conversion/docx/html/body/{item_id}"
-            )
+            html_url = f"https://hudoc.echr.coe.int/app/conversion/docx/html/body/{item_id}"
             try:
                 resp = await client.get(
                     html_url,
@@ -172,14 +170,12 @@ class HudocCollector(BaseCollector):
 
         # Strategy 2: PDF conversion endpoint
         await self._limiter.wait()
-        pdf_url = (
-            "https://hudoc.echr.coe.int"
-            f"/app/conversion/pdf/?library=ECHR&id={item_id}"
-        )
+        pdf_url = f"https://hudoc.echr.coe.int/app/conversion/pdf/?library=ECHR&id={item_id}"
         try:
             resp = await client.get(pdf_url)
             if resp.status_code == 200 and len(resp.content) > 500:
                 from juris.pdf import extract_text_from_bytes
+
                 text = extract_text_from_bytes(resp.content)
                 if text and len(text) > 100:
                     logger.info("Extracted %d chars from HUDOC PDF for %s", len(text), item_id)

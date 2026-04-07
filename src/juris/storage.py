@@ -112,7 +112,10 @@ def save_document(doc: Document, base_dir: Path) -> Path:
 
 
 def load_document(
-    doc_id: str, doc_type: DocType, session: str | None, base_dir: Path,
+    doc_id: str,
+    doc_type: DocType,
+    session: str | None,
+    base_dir: Path,
 ) -> Document | None:
     """Load a document from its JSON file."""
     directory = _doc_dir(base_dir, doc_type, session)

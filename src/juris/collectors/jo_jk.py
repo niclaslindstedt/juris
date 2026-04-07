@@ -164,10 +164,12 @@ class JoJkCollector(BaseCollector):
                     href = str(link["href"])
                     title = link.get_text(strip=True)
                     if title and ("/beslut/" in href or "/besluten/" in href):
-                        items.append({
-                            "url": urljoin(JK_BASE_URL, href),
-                            "title": title,
-                        })
+                        items.append(
+                            {
+                                "url": urljoin(JK_BASE_URL, href),
+                                "title": title,
+                            }
+                        )
 
             # Strategy 2: scan all links matching decision patterns
             if not items:
@@ -177,10 +179,12 @@ class JoJkCollector(BaseCollector):
                     if not title or len(title) < 5:
                         continue
                     if re.search(r"/beslut/\d{4}/", href) or "/arenden/" in href:
-                        items.append({
-                            "url": urljoin(JK_BASE_URL, href),
-                            "title": title,
-                        })
+                        items.append(
+                            {
+                                "url": urljoin(JK_BASE_URL, href),
+                                "title": title,
+                            }
+                        )
 
             if not items:
                 break
@@ -198,9 +202,7 @@ class JoJkCollector(BaseCollector):
     # Detail page parsing (shared between JO and JK)
     # ------------------------------------------------------------------
 
-    def _parse_detail_page(
-        self, html: str, page_url: str, doc_type: DocType
-    ) -> Document | None:
+    def _parse_detail_page(self, html: str, page_url: str, doc_type: DocType) -> Document | None:
         """Parse a decision detail page into a Document model."""
         base_url = JO_BASE_URL if doc_type == DocType.JO else JK_BASE_URL
         soup = BeautifulSoup(html, "lxml")

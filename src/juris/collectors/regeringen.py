@@ -52,9 +52,7 @@ _DESIGNATION_PATTERNS: dict[DocType, list[re.Pattern[str]]] = {
 PAGE_SIZE = 10  # Regeringen.se shows 10 results per page
 
 
-def _parse_designation(
-    text: str, doc_type: DocType
-) -> tuple[str, str | None]:
+def _parse_designation(text: str, doc_type: DocType) -> tuple[str, str | None]:
     """Extract (designation, session) from text containing e.g. 'Prop. 2025/26:229'.
 
     Returns ("229", "2025/26") for propositions, ("25", "2026") for SOU, etc.
@@ -123,10 +121,12 @@ class RegeringenCollector(BaseCollector):
             if re.match(r"/rattsliga-dokument/[^/]+/\d{4}/\d{2}/", href):
                 title = link.get_text(strip=True)
                 if title:
-                    items.append({
-                        "url": urljoin(BASE_URL, href),
-                        "title": title,
-                    })
+                    items.append(
+                        {
+                            "url": urljoin(BASE_URL, href),
+                            "title": title,
+                        }
+                    )
 
         return items
 
@@ -134,9 +134,7 @@ class RegeringenCollector(BaseCollector):
     # Detail page parsing
     # ------------------------------------------------------------------
 
-    def _parse_detail_page(
-        self, html: str, page_url: str, doc_type: DocType
-    ) -> Document | None:
+    def _parse_detail_page(self, html: str, page_url: str, doc_type: DocType) -> Document | None:
         """Parse a document detail page into a Document model."""
         soup = BeautifulSoup(html, "lxml")
 
@@ -254,9 +252,7 @@ class RegeringenCollector(BaseCollector):
     # Public interface
     # ------------------------------------------------------------------
 
-    async def _try_lagr_designation_from_pdf(
-        self, doc: Document
-    ) -> Document:
+    async def _try_lagr_designation_from_pdf(self, doc: Document) -> Document:
         """For lagrådsremisser, try to extract a better designation from PDF attachments.
 
         Downloads the first PDF attachment to a temporary location, extracts
@@ -266,9 +262,7 @@ class RegeringenCollector(BaseCollector):
         if doc.doc_type != DocType.LAGR:
             return doc
 
-        pdf_attachments = [
-            a for a in doc.attachments if a.mime_type == "application/pdf"
-        ]
+        pdf_attachments = [a for a in doc.attachments if a.mime_type == "application/pdf"]
         if not pdf_attachments:
             return doc
 
@@ -293,7 +287,8 @@ class RegeringenCollector(BaseCollector):
                 new_designation, new_session = result
                 logger.info(
                     "Extracted lagr designation from PDF: %s (session %s)",
-                    new_designation, new_session,
+                    new_designation,
+                    new_session,
                 )
                 doc.designation = new_designation
                 if new_session:

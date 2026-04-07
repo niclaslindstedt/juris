@@ -134,7 +134,7 @@ class BaseCollector(ABC):
                     resp.raise_for_status()
                     return resp  # unreachable, raise_for_status throws
 
-                delay = self._backoff_base * (self._backoff_factor ** attempt)
+                delay = self._backoff_base * (self._backoff_factor**attempt)
                 if resp.status_code == 429:
                     retry_after = resp.headers.get("Retry-After")
                     if retry_after and retry_after.isdigit():
@@ -142,7 +142,11 @@ class BaseCollector(ABC):
 
                 logger.warning(
                     "HTTP %d for %s, retrying in %.1fs (attempt %d/%d)",
-                    resp.status_code, url, delay, attempt + 1, self._max_retries,
+                    resp.status_code,
+                    url,
+                    delay,
+                    attempt + 1,
+                    self._max_retries,
                 )
                 await asyncio.sleep(delay)
 
@@ -150,10 +154,14 @@ class BaseCollector(ABC):
                 last_exc = exc
                 if attempt == self._max_retries:
                     raise
-                delay = self._backoff_base * (self._backoff_factor ** attempt)
+                delay = self._backoff_base * (self._backoff_factor**attempt)
                 logger.warning(
                     "%s for %s, retrying in %.1fs (attempt %d/%d)",
-                    type(exc).__name__, url, delay, attempt + 1, self._max_retries,
+                    type(exc).__name__,
+                    url,
+                    delay,
+                    attempt + 1,
+                    self._max_retries,
                 )
                 await asyncio.sleep(delay)
 
@@ -195,10 +203,12 @@ class BaseCollector(ABC):
                 async with client.stream("GET", url) as resp:
                     if resp.status_code in _RETRYABLE_STATUS_CODES:
                         if attempt < self._max_retries:
-                            delay = self._backoff_base * (self._backoff_factor ** attempt)
+                            delay = self._backoff_base * (self._backoff_factor**attempt)
                             logger.warning(
                                 "HTTP %d downloading %s, retrying in %.1fs",
-                                resp.status_code, url, delay,
+                                resp.status_code,
+                                url,
+                                delay,
                             )
                             await asyncio.sleep(delay)
                             continue
@@ -210,10 +220,12 @@ class BaseCollector(ABC):
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 last_exc = e
                 if attempt < self._max_retries:
-                    delay = self._backoff_base * (self._backoff_factor ** attempt)
+                    delay = self._backoff_base * (self._backoff_factor**attempt)
                     logger.warning(
                         "%s downloading %s, retrying in %.1fs",
-                        type(e).__name__, url, delay,
+                        type(e).__name__,
+                        url,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -222,20 +234,19 @@ class BaseCollector(ABC):
                 return False
 
         logger.warning(
-            "Failed to download %s after %d retries: %s", url, self._max_retries, last_exc,
+            "Failed to download %s after %d retries: %s",
+            url,
+            self._max_retries,
+            last_exc,
         )
         return False
 
-    async def download_attachments(
-        self, doc: Document, base_dir: Path
-    ) -> Document:
+    async def download_attachments(self, doc: Document, base_dir: Path) -> Document:
         """Download PDF attachments and extract text from the primary one.
 
         Subclasses that need custom behaviour can override this method.
         """
-        pdf_attachments = [
-            a for a in doc.attachments if a.mime_type == "application/pdf"
-        ]
+        pdf_attachments = [a for a in doc.attachments if a.mime_type == "application/pdf"]
         if not pdf_attachments:
             return doc
 
@@ -335,9 +346,7 @@ def get_preferred_providers() -> dict[str, str]:
 
     # Default: sole-provider doc types get their only provider
     preferred: dict[str, str] = {
-        dt: providers[0]
-        for dt, providers in doc_type_providers.items()
-        if len(providers) == 1
+        dt: providers[0] for dt, providers in doc_type_providers.items() if len(providers) == 1
     }
 
     # Explicit overrides from collector classes
