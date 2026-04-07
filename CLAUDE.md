@@ -83,7 +83,8 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 
 ```bash
 make install                   # Create .venv and install with dev dependencies
-make lint                      # Lint
+make lint                      # Lint + format check (matches CI)
+make format                    # Auto-format code
 make typecheck                 # Type check (strict mode)
 make test                      # Run unit tests
 make test-e2e                  # Run e2e tests (live APIs, slow)
@@ -95,6 +96,7 @@ Or manually:
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m ruff check src/
+.venv/bin/python -m ruff format --check src/
 .venv/bin/mypy src/
 .venv/bin/pytest tests/ --ignore=tests/test_e2e.py
 ```

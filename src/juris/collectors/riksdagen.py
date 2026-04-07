@@ -261,9 +261,7 @@ class RiksdagenCollector(BaseCollector):
 
                 # Fetch full HTML content (skip when only metadata is wanted)
                 html = None if skip_content else await self._fetch_document_html(dok_id)
-                doc = self._parse_document(
-                    item, full_html=html, expected_doc_type=doc_type
-                )
+                doc = self._parse_document(item, full_html=html, expected_doc_type=doc_type)
                 yield doc
                 count += 1
 

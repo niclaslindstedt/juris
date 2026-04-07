@@ -50,8 +50,18 @@ _JK_DATE_RE = re.compile(r"Beslutsdatum:\s*(\d{1,2}\s+\w+\s+\d{4})")
 
 # Swedish month name to number mapping
 _SV_MONTHS: dict[str, int] = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "maj": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dec": 12,
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "maj": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "okt": 10,
+    "nov": 11,
+    "dec": 12,
 }
 
 # XML namespace used in sitemaps
@@ -98,9 +108,7 @@ class JoJkCollector(BaseCollector):
             logger.warning("Failed to fetch %s: %s", url, e)
             return None
 
-    async def _post_html(
-        self, url: str, data: dict[str, str | list[str]]
-    ) -> str | None:
+    async def _post_html(self, url: str, data: dict[str, str | list[str]]) -> str | None:
         """POST form data to a URL and return the response text, or None on error."""
         await self._limiter.wait()
         client = await self._get_client()
@@ -299,9 +307,7 @@ class JoJkCollector(BaseCollector):
     # Detail page parsing — JO (legacy shared parser)
     # ------------------------------------------------------------------
 
-    def _parse_jo_detail_page(
-        self, html: str, page_url: str
-    ) -> Document | None:
+    def _parse_jo_detail_page(self, html: str, page_url: str) -> Document | None:
         """Parse a JO decision detail page into a Document model."""
         soup = BeautifulSoup(html, "lxml")
 
@@ -396,9 +402,7 @@ class JoJkCollector(BaseCollector):
     # Detail page parsing — JK (new site structure)
     # ------------------------------------------------------------------
 
-    def _parse_jk_detail_page(
-        self, html: str, page_url: str
-    ) -> Document | None:
+    def _parse_jk_detail_page(self, html: str, page_url: str) -> Document | None:
         """Parse a JK decision detail page into a Document model.
 
         The new JK site has this structure inside div.content:
@@ -467,7 +471,13 @@ class JoJkCollector(BaseCollector):
         if body and isinstance(body, Tag):
             for child in body.children:
                 if isinstance(child, Tag) and child.name in (
-                    "p", "h2", "h3", "h4", "ul", "ol", "blockquote"
+                    "p",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "ul",
+                    "ol",
+                    "blockquote",
                 ):
                     txt = child.get_text(strip=True)
                     if txt:
@@ -594,16 +604,18 @@ class JoJkCollector(BaseCollector):
 
                 doc_id = build_doc_id(DocType.JK, designation, session) if designation else ""
 
-                results.append(SearchResult(
-                    doc_id=doc_id,
-                    doc_type=DocType.JK,
-                    title=item["title"],
-                    designation=designation,
-                    session=session,
-                    date=doc_date,
-                    source=Source.JO_JK,
-                    source_url=item["url"],
-                ))
+                results.append(
+                    SearchResult(
+                        doc_id=doc_id,
+                        doc_type=DocType.JK,
+                        title=item["title"],
+                        designation=designation,
+                        session=session,
+                        date=doc_date,
+                        source=Source.JO_JK,
+                        source_url=item["url"],
+                    )
+                )
 
             page += 1
 
@@ -626,12 +638,16 @@ class JoJkCollector(BaseCollector):
         # Discover decision URLs
         if doc_type == DocType.JO:
             urls = await self._fetch_jo_sitemap_urls(
-                since=since, until=until, limit=limit,
+                since=since,
+                until=until,
+                limit=limit,
             )
             items = [{"url": u["url"]} for u in urls]
         else:
             items = await self._fetch_jk_listing_urls(
-                since=since, until=until, limit=limit,
+                since=since,
+                until=until,
+                limit=limit,
             )
 
         count = 0

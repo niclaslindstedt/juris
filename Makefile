@@ -15,12 +15,13 @@ run: install
 
 lint:
 	$(PYTHON) -m ruff check src/
+	$(PYTHON) -m ruff format --check src/
 
 typecheck:
 	$(PYTHON) -m mypy src/
 
 format:
-	$(PYTHON) -m ruff format --check src/
+	$(PYTHON) -m ruff format src/
 
 test:
 	$(PYTHON) -m pytest tests/ -v --ignore=tests/test_e2e.py

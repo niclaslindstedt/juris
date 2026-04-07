@@ -205,11 +205,7 @@ class HudocCollector(BaseCollector):
         if doc_type and doc_type != DocType.ECHR:
             return []
 
-        hudoc_query = (
-            'contentsitename:"ECHR" AND '
-            'documentcollectionid:"JUDGMENTS" AND '
-            f'"{query}"'
-        )
+        hudoc_query = f'contentsitename:"ECHR" AND documentcollectionid:"JUDGMENTS" AND "{query}"'
         raw_results = await self._search(hudoc_query, start=0, length=limit)
 
         results: list[SearchResult] = []
@@ -217,17 +213,19 @@ class HudocCollector(BaseCollector):
             doc = self._parse_result(item)
             if not doc:
                 continue
-            results.append(SearchResult(
-                doc_id=doc.doc_id,
-                doc_type=DocType.ECHR,
-                title=doc.title,
-                designation=doc.designation,
-                session=doc.session,
-                date=doc.date,
-                source=Source.HUDOC,
-                source_url=doc.source_url,
-                summary=doc.summary,
-            ))
+            results.append(
+                SearchResult(
+                    doc_id=doc.doc_id,
+                    doc_type=DocType.ECHR,
+                    title=doc.title,
+                    designation=doc.designation,
+                    session=doc.session,
+                    date=doc.date,
+                    source=Source.HUDOC,
+                    source_url=doc.source_url,
+                    summary=doc.summary,
+                )
+            )
 
         return results
 
