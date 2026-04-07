@@ -7,6 +7,7 @@ import re
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -140,14 +141,15 @@ class DomstolCollector(BaseCollector):
 
     async def _fetch_json(
         self, path: str, params: dict[str, str | int] | None = None
-    ) -> list[dict] | dict | None:
+    ) -> list[dict[str, Any]] | dict[str, Any] | None:
         """Fetch JSON from the API. Returns parsed JSON or None on error."""
         await self._limiter.wait()
         client = await self._get_client()
         try:
             resp = await client.get(path, params=params)
             resp.raise_for_status()
-            return resp.json()
+            result: list[dict[str, Any]] | dict[str, Any] = resp.json()
+            return result
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Failed to fetch %s: %s", path, e)
             return None
@@ -156,7 +158,7 @@ class DomstolCollector(BaseCollector):
     # Response parsing
     # ------------------------------------------------------------------
 
-    def _parse_publication(self, pub: dict, doc_type: DocType) -> Document | None:
+    def _parse_publication(self, pub: dict[str, Any], doc_type: DocType) -> Document | None:
         """Map a PubliceringDTO dict to a Document."""
         referat_list: list[str] = pub.get("referatNummerLista", [])
         mal_list: list[str] = pub.get("malNummerLista", [])

@@ -15,9 +15,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e ".[dev]"
-      - run: ruff check src/
-      - run: ruff format --check src/
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -e ".[dev]"
+      - run: .venv/bin/python -m ruff check src/
+      - run: .venv/bin/python -m ruff format --check src/
 
   typecheck:
     runs-on: ubuntu-latest
@@ -27,8 +28,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e ".[dev]"
-      - run: mypy src/
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -e ".[dev]"
+      - run: .venv/bin/mypy src/
 
   test:
     runs-on: ubuntu-latest
@@ -41,5 +43,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -e ".[dev]"
-      - run: pytest tests/ -v --ignore=tests/test_e2e.py
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -e ".[dev]"
+      - run: .venv/bin/pytest tests/ -v --ignore=tests/test_e2e.py

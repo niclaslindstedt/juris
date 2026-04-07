@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
+from typing import Any
 
 import httpx
 
@@ -51,7 +52,12 @@ class HudocCollector(BaseCollector):
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit)
 
-    async def _search(self, query: str, start: int = 0, length: int = PAGE_SIZE) -> list[dict]:
+    async def _search(
+        self,
+        query: str,
+        start: int = 0,
+        length: int = PAGE_SIZE,
+    ) -> list[dict[str, Any]]:
         """Execute a HUDOC search and return result items."""
         await self._limiter.wait()
         client = await self._get_client()
@@ -68,12 +74,13 @@ class HudocCollector(BaseCollector):
             )
             resp.raise_for_status()
             data = resp.json()
-            return data.get("results", [])
+            results: list[dict[str, Any]] = data.get("results", [])
+            return results
         except (httpx.HTTPError, ValueError, KeyError) as e:
             logger.warning("HUDOC search failed: %s", e)
             return []
 
-    def _parse_result(self, item: dict) -> Document | None:
+    def _parse_result(self, item: dict[str, Any]) -> Document | None:
         """Map a HUDOC result item to a Document."""
         columns = item.get("columns", {})
         item_id = columns.get("itemid", "")
@@ -176,10 +183,10 @@ class HudocCollector(BaseCollector):
             if resp.status_code == 200 and len(resp.content) > 500:
                 from juris.pdf import extract_text_from_bytes
 
-                text = extract_text_from_bytes(resp.content)
-                if text and len(text) > 100:
-                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(text), item_id)
-                    return text, None
+                pdf_text = extract_text_from_bytes(resp.content)
+                if pdf_text and len(pdf_text) > 100:
+                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(pdf_text), item_id)
+                    return pdf_text, None
         except httpx.HTTPError as e:
             logger.debug("HUDOC PDF unavailable for %s: %s", item_id, e)
 
@@ -234,7 +241,8 @@ class HudocCollector(BaseCollector):
                 if doc.doc_id in seen_doc_ids and doc.source_id:
                     # Use last 6 chars of item_id for compact disambiguation
                     suffix = doc.source_id[-6:] if len(doc.source_id) > 6 else doc.source_id
-                    doc.designation = f"{doc.designation}-{suffix}"
+                    designation = f"{doc.designation}-{suffix}"
+                    doc.designation = designation
                     doc.doc_id = build_doc_id(DocType.ECHR, doc.designation, doc.session)
                 seen_doc_ids.add(doc.doc_id)
 

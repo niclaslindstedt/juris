@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
+from typing import Any
 
 import httpx
 
@@ -67,14 +68,15 @@ class RiksdagenCollector(BaseCollector):
     def __init__(self, rate_limit: float = 0.5) -> None:
         super().__init__(rate_limit=rate_limit, base_url=BASE_URL)
 
-    async def _fetch_json(self, url: str) -> dict | None:
+    async def _fetch_json(self, url: str) -> dict[str, Any] | None:
         """Fetch a URL and return parsed JSON, or None on error."""
         await self._limiter.wait()
         client = await self._get_client()
         try:
             resp = await client.get(url)
             resp.raise_for_status()
-            return resp.json()
+            result: dict[str, Any] = resp.json()
+            return result
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Failed to fetch %s: %s", url, e)
             return None
@@ -85,9 +87,10 @@ class RiksdagenCollector(BaseCollector):
         if not data:
             return None
         doc_data = data.get("dokumentstatus", {}).get("dokument", {})
-        return doc_data.get("html")
+        html: str | None = doc_data.get("html")
+        return html
 
-    def _parse_document(self, item: dict, full_html: str | None = None) -> Document:
+    def _parse_document(self, item: dict[str, Any], full_html: str | None = None) -> Document:
         """Convert a Riksdagen API document item to our Document model."""
         dok_id = item["dok_id"]
         doc_type_str = item.get("doktyp", "").lower()
