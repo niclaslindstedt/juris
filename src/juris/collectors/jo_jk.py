@@ -152,6 +152,12 @@ class JoJkCollector(BaseCollector):
             listing_url = f"{JK_BASE_URL}/beslut/?{urlencode(params)}"
             html = await self._fetch_html(listing_url)
             if not html:
+                if page == 1:
+                    logger.error(
+                        "JK site (%s) is unreachable — skipping JK collection. "
+                        "The site may be temporarily down.",
+                        JK_BASE_URL,
+                    )
                 break
 
             soup = BeautifulSoup(html, "lxml")

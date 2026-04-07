@@ -57,6 +57,14 @@ _DOCTYPE_MAP: dict[DocType, str] = {
     DocType.SFS: "sfs",
 }
 
+# Doc types where the API requires a subtyp filter.
+# SKR documents are now stored under doktyp=prop with subtyp=skr;
+# adding subtyp=prop for PROP prevents SKR items leaking into PROP results.
+_SUBTYPE_MAP: dict[DocType, str] = {
+    DocType.SKR: "skr",
+    DocType.PROP: "prop",
+}
+
 
 class RiksdagenCollector(BaseCollector):
     """Collects documents from the Riksdagen open data API."""
@@ -90,17 +98,26 @@ class RiksdagenCollector(BaseCollector):
         html: str | None = doc_data.get("html")
         return html
 
-    def _parse_document(self, item: dict[str, Any], full_html: str | None = None) -> Document:
+    def _parse_document(
+        self,
+        item: dict[str, Any],
+        full_html: str | None = None,
+        *,
+        expected_doc_type: DocType | None = None,
+    ) -> Document:
         """Convert a Riksdagen API document item to our Document model."""
         dok_id = item["dok_id"]
-        doc_type_str = item.get("doktyp", "").lower()
 
-        # Reverse lookup DocType from Riksdagen's type string
-        doc_type = DocType.PROP  # default
-        for dt, rk_type in _DOCTYPE_MAP.items():
-            if rk_type == doc_type_str:
-                doc_type = dt
-                break
+        if expected_doc_type is not None:
+            doc_type = expected_doc_type
+        else:
+            # Reverse lookup DocType from Riksdagen's type string
+            doc_type_str = item.get("doktyp", "").lower()
+            doc_type = DocType.PROP  # default
+            for dt, rk_type in _DOCTYPE_MAP.items():
+                if rk_type == doc_type_str:
+                    doc_type = dt
+                    break
 
         designation = item.get("beteckning", item.get("nummer", ""))
         session = item.get("rm") or None
@@ -189,6 +206,9 @@ class RiksdagenCollector(BaseCollector):
             raise ValueError(f"Unsupported doc type for Riksdagen: {doc_type}")
 
         rk_type = _DOCTYPE_MAP[doc_type]
+        # SKR is now filed under doktyp=prop&subtyp=skr in the Riksdagen API
+        if doc_type == DocType.SKR:
+            rk_type = "prop"
         page_size = 20
         count = 0
 
@@ -201,6 +221,8 @@ class RiksdagenCollector(BaseCollector):
             "sort": "datum",
             "sortorder": "desc",
         }
+        if doc_type in _SUBTYPE_MAP:
+            params["subtyp"] = _SUBTYPE_MAP[doc_type]
         if session:
             if doc_type == DocType.SFS:
                 # SFS uses year, not riksmöte — map to date range
@@ -239,7 +261,9 @@ class RiksdagenCollector(BaseCollector):
 
                 # Fetch full HTML content (skip when only metadata is wanted)
                 html = None if skip_content else await self._fetch_document_html(dok_id)
-                doc = self._parse_document(item, full_html=html)
+                doc = self._parse_document(
+                    item, full_html=html, expected_doc_type=doc_type
+                )
                 yield doc
                 count += 1
 
