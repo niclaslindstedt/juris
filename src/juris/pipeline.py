@@ -60,9 +60,7 @@ async def collect_from_source(
     if since is None and skip_existing and state.last_fetched_date:
         state_date = date.fromisoformat(state.last_fetched_date)
         since = state_date - timedelta(days=2)
-        logger.info(
-            "Auto-incremental: since=%s (from state minus 2-day buffer)", since
-        )
+        logger.info("Auto-incremental: since=%s (from state minus 2-day buffer)", since)
 
     collected = 0
     skipped = 0

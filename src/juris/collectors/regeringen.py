@@ -50,7 +50,7 @@ _DESIGNATION_PATTERNS: dict[DocType, list[re.Pattern[str]]] = {
     ],
 }
 
-PAGE_SIZE = 10  # Regeringen.se shows 10 results per page
+PAGE_SIZE = 20  # Regeringen.se shows 20 results per page
 
 
 def _parse_designation(text: str, doc_type: DocType) -> tuple[str, str | None]:
