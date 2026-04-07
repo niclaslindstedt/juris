@@ -1,24 +1,32 @@
 import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { VERSION } from "../data/sourceData";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const isHome = location.pathname === "/";
+
+  // On the home page, use anchor links; on other pages, link back to home sections
+  function sectionHref(id: string) {
+    return isHome ? `#${id}` : `/#${id}`;
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border backdrop-blur-xl bg-surface/80">
       <div className="mx-auto max-w-6xl flex items-center justify-between px-6 h-16">
-        <a href="#" className="flex items-center gap-2 text-lg font-bold font-mono">
+        <Link to="/" className="flex items-center gap-2 text-lg font-bold font-mono">
           <span className="text-accent">juris</span>
           <span className="text-xs text-text-dim font-normal">v{VERSION}</span>
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-8">
-          <a href="#features" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Features</a>
-          <a href="#sources" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Sources</a>
-          <a href="#doc-types" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Doc Types</a>
-          <a href="#manual" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Manual</a>
-          <a href="#getting-started" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Get Started</a>
+          <a href={sectionHref("features")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Features</a>
+          <a href={sectionHref("sources")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Sources</a>
+          <a href={sectionHref("doc-types")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Doc Types</a>
+          <Link to="/manual" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Manual</Link>
+          <a href={sectionHref("getting-started")} className="text-sm text-text-secondary hover:text-text-primary transition-colors">Get Started</a>
           <a
             href="https://github.com/niclaslindstedt/juris"
             target="_blank"
@@ -51,11 +59,11 @@ export default function Navbar() {
       {/* Mobile menu */}
       {open && (
         <div className="md:hidden border-t border-border bg-surface-100 px-6 py-4 flex flex-col gap-3">
-          <a href="#features" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Features</a>
-          <a href="#sources" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Sources</a>
-          <a href="#doc-types" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Doc Types</a>
-          <a href="#manual" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Manual</a>
-          <a href="#getting-started" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Get Started</a>
+          <a href={sectionHref("features")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Features</a>
+          <a href={sectionHref("sources")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Sources</a>
+          <a href={sectionHref("doc-types")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Doc Types</a>
+          <Link to="/manual" onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Manual</Link>
+          <a href={sectionHref("getting-started")} onClick={() => setOpen(false)} className="text-sm text-text-secondary hover:text-text-primary">Get Started</a>
           <a href="https://github.com/niclaslindstedt/juris" target="_blank" rel="noopener noreferrer" className="text-sm text-text-secondary hover:text-text-primary">GitHub</a>
         </div>
       )}

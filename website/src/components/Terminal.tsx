@@ -99,7 +99,7 @@ export default function Terminal() {
         {/* Terminal body */}
         <div
           ref={containerRef}
-          className="bg-surface-100 p-4 font-mono text-sm leading-6 h-[340px] overflow-y-auto"
+          className="bg-surface-100 p-4 pb-8 font-mono text-sm leading-6 h-[340px] overflow-y-auto"
         >
           {visibleLines.map((line, i) => (
             <div key={i} className={line.className ?? ""}>
