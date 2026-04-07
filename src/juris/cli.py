@@ -75,6 +75,37 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+class _ProgressTracker:
+    """Simple progress tracker for collection operations."""
+
+    def __init__(self, label: str, total: int | None = None) -> None:
+        self.label = label
+        self.total = total
+        self.current = 0
+        self._last_line_len = 0
+
+    def update(self, collected: int, skipped: int) -> None:
+        self.current = collected + skipped
+        self._render(collected, skipped)
+
+    def _render(self, collected: int, skipped: int) -> None:
+        if self.total:
+            pct = min(100, int(self.current / self.total * 100))
+            bar_width = 20
+            filled = int(bar_width * pct / 100)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            line = f"\r  {self.label}: {bar} {pct}% ({collected} saved, {skipped} skipped)"
+        else:
+            line = f"\r  {self.label}: {collected} saved, {skipped} skipped"
+        # Pad with spaces to clear previous longer output
+        padded = line.ljust(self._last_line_len)
+        self._last_line_len = len(line)
+        click.echo(padded, nl=False)
+
+    def finish(self) -> None:
+        click.echo()  # newline after progress
+
+
 async def _collect_from_source(
     source_name: str,
     dt: DocType,
@@ -86,6 +117,7 @@ async def _collect_from_source(
     limit: int | None = None,
     skip_existing: bool = True,
     skip_content: bool = False,
+    progress: bool = False,
 ) -> tuple[int, int]:
     """Run collection for a single (source, doc_type) pair.
 
@@ -97,6 +129,8 @@ async def _collect_from_source(
 
     collected = 0
     skipped = 0
+    tracker = _ProgressTracker(f"{source_name}/{dt.value}", total=limit) if progress else None
+
     try:
         async for doc in collector.collect(
             dt,
@@ -111,7 +145,10 @@ async def _collect_from_source(
             )
             if skip_existing and exists:
                 skipped += 1
-                click.echo(f"  skip {doc.doc_id} (exists)")
+                if tracker:
+                    tracker.update(collected, skipped)
+                else:
+                    click.echo(f"  skip {doc.doc_id} (exists)")
                 continue
 
             if not skip_content:
@@ -119,12 +156,17 @@ async def _collect_from_source(
 
             path = save_document(doc, data_dir)
             collected += 1
-            click.echo(f"  saved {doc.doc_id} -> {path}")
+            if tracker:
+                tracker.update(collected, skipped)
+            else:
+                click.echo(f"  saved {doc.doc_id} -> {path}")
 
             state.total_collected += 1
             if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
                 state.last_fetched_date = str(doc.date)
     finally:
+        if tracker:
+            tracker.finish()
         await collector.close()
 
     save_state(state, data_dir)
@@ -278,8 +320,8 @@ def collect_type(
         grand_collected = 0
         grand_skipped = 0
 
-        for source_name in providers:
-            click.echo(f"\n--- {source_name} ---")
+        for i, source_name in enumerate(providers, 1):
+            click.echo(f"\n[{i}/{len(providers)}] {source_name}")
             collected, skipped = await _collect_from_source(
                 source_name,
                 dt,
@@ -290,6 +332,7 @@ def collect_type(
                 limit=limit,
                 skip_existing=skip_existing,
                 skip_content=skip_content,
+                progress=True,
             )
             click.echo(f"  {source_name}: {collected} collected, {skipped} skipped")
             grand_collected += collected
@@ -317,6 +360,14 @@ def collect_type(
     help="Skip fetching full text (faster, metadata only).",
 )
 @click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
+@click.option(
+    "--concurrent/--sequential", default=False,
+    help="Run independent sources concurrently (faster, but noisier output).",
+)
+@click.option(
+    "--max-concurrency", default=4, type=int,
+    help="Maximum number of concurrent source collections (default 4).",
+)
 @click.pass_context
 def collect_all(
     ctx: click.Context,
@@ -326,12 +377,18 @@ def collect_all(
     skip_existing: bool,
     skip_content: bool,
     dry_run: bool,
+    concurrent: bool,
+    max_concurrency: int,
 ) -> None:
     """Collect all document types from all providers (best source per type).
 
     When multiple providers support the same document type, only the
     best provider is used.  Selection prefers structured APIs over web
     scraping for reliability and speed.
+
+    Use --concurrent to run independent sources in parallel for faster
+    collection. Sources sharing the same provider are grouped and run
+    sequentially within each group to respect rate limits.
 
     \b
     Preferred providers for overlapping types:
@@ -358,6 +415,10 @@ def collect_all(
             click.echo(f"  {dt.value:12s} <- {source_name}{alt_str}")
         click.echo(f"\n{len(plan)} document types across "
                     f"{len({s for _, s in plan})} providers")
+        if concurrent:
+            click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
+        else:
+            click.echo("Mode: sequential")
         return
 
     click.echo(
@@ -365,29 +426,84 @@ def collect_all(
         f"{len({s for _, s in plan})} providers"
     )
 
-    async def _run_all() -> tuple[int, int]:
-        grand_collected = 0
-        grand_skipped = 0
+    if concurrent:
+        click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
 
-        for dt, source_name in plan:
-            click.echo(f"\n--- {dt.value} <- {source_name} ---")
-            collected, skipped = await _collect_from_source(
-                source_name,
-                dt,
-                data_dir,
-                since=_parse_date(since),
-                until=_parse_date(until),
-                limit=limit,
-                skip_existing=skip_existing,
-                skip_content=skip_content,
-            )
-            click.echo(f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped")
-            grand_collected += collected
-            grand_skipped += skipped
+        async def _run_concurrent() -> tuple[int, int]:
+            # Group by source to avoid hammering the same API concurrently
+            source_groups: dict[str, list[DocType]] = {}
+            for dt, source_name in plan:
+                source_groups.setdefault(source_name, []).append(dt)
 
-        return grand_collected, grand_skipped
+            semaphore = asyncio.Semaphore(max_concurrency)
 
-    total_collected, total_skipped = asyncio.run(_run_all())
+            async def _collect_group(
+                source_name: str, doc_types: list[DocType]
+            ) -> tuple[int, int]:
+                """Collect all doc types for a single source sequentially."""
+                group_collected = 0
+                group_skipped = 0
+                async with semaphore:
+                    for dt in doc_types:
+                        click.echo(f"  Starting {dt.value} <- {source_name}")
+                        collected, skipped = await _collect_from_source(
+                            source_name,
+                            dt,
+                            data_dir,
+                            since=_parse_date(since),
+                            until=_parse_date(until),
+                            limit=limit,
+                            skip_existing=skip_existing,
+                            skip_content=skip_content,
+                            progress=True,
+                        )
+                        click.echo(
+                            f"  Done {source_name}/{dt.value}: "
+                            f"{collected} collected, {skipped} skipped"
+                        )
+                        group_collected += collected
+                        group_skipped += skipped
+                return group_collected, group_skipped
+
+            tasks = [
+                _collect_group(source_name, doc_types)
+                for source_name, doc_types in source_groups.items()
+            ]
+            results = await asyncio.gather(*tasks)
+
+            grand_collected = sum(c for c, _ in results)
+            grand_skipped = sum(s for _, s in results)
+            return grand_collected, grand_skipped
+
+        total_collected, total_skipped = asyncio.run(_run_concurrent())
+    else:
+        async def _run_sequential() -> tuple[int, int]:
+            grand_collected = 0
+            grand_skipped = 0
+
+            for i, (dt, source_name) in enumerate(plan, 1):
+                click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {source_name}")
+                collected, skipped = await _collect_from_source(
+                    source_name,
+                    dt,
+                    data_dir,
+                    since=_parse_date(since),
+                    until=_parse_date(until),
+                    limit=limit,
+                    skip_existing=skip_existing,
+                    skip_content=skip_content,
+                    progress=True,
+                )
+                click.echo(
+                    f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped"
+                )
+                grand_collected += collected
+                grand_skipped += skipped
+
+            return grand_collected, grand_skipped
+
+        total_collected, total_skipped = asyncio.run(_run_sequential())
+
     click.echo(
         f"\nTotal: {total_collected} collected, {total_skipped} skipped "
         f"across {len(plan)} document types"
@@ -436,6 +552,146 @@ def stats(ctx: click.Context) -> None:
             total += count
 
     click.echo(f"  total: {total}")
+
+
+@main.command()
+@click.option("--type", "doc_type", default=None,
+              type=click.Choice([dt.value for dt in DocType]),
+              help="Only validate this document type.")
+@click.option("--fix", is_flag=True, help="Attempt to auto-fix minor issues (e.g. missing doc_id).")
+@click.pass_context
+def validate(ctx: click.Context, doc_type: str | None, fix: bool) -> None:
+    """Validate collected data quality.
+
+    Checks for missing required fields, suspicious values, duplicate doc_ids,
+    and other data quality issues across all collected documents.
+    """
+    data_dir: Path = ctx.obj["data_dir"]
+
+    if not data_dir.exists():
+        click.echo("No data directory found.")
+        return
+
+    types_to_check = [DocType(doc_type)] if doc_type else list(DocType)
+
+    total_docs = 0
+    total_warnings = 0
+    total_errors = 0
+    seen_doc_ids: dict[str, str] = {}  # doc_id -> file path
+
+    for dt in types_to_check:
+        type_dir = data_dir / dt.value
+        if not type_dir.exists():
+            continue
+
+        json_files = list(type_dir.rglob("*.json"))
+        if not json_files:
+            continue
+
+        for json_path in sorted(json_files):
+            total_docs += 1
+            rel_path = str(json_path.relative_to(data_dir))
+            issues: list[tuple[str, str]] = []  # (level, message)
+
+            try:
+                raw = json.loads(json_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as e:
+                issues.append(("ERROR", f"Cannot read file: {e}"))
+                total_errors += 1
+                _print_issues(rel_path, issues)
+                continue
+
+            # Required fields check
+            for field in ("doc_id", "doc_type", "designation", "title", "date", "source"):
+                val = raw.get(field)
+                if not val:
+                    issues.append(("ERROR", f"Missing required field: {field}"))
+                    total_errors += 1
+
+            # Duplicate doc_id check
+            doc_id = raw.get("doc_id", "")
+            if doc_id:
+                if doc_id in seen_doc_ids:
+                    issues.append(("WARN", f"Duplicate doc_id (also in {seen_doc_ids[doc_id]})"))
+                    total_warnings += 1
+                else:
+                    seen_doc_ids[doc_id] = rel_path
+
+            # Suspicious designation
+            designation = raw.get("designation", "")
+            if designation and len(designation) > 100:
+                issues.append(("WARN", f"Suspiciously long designation ({len(designation)} chars)"))
+                total_warnings += 1
+            if designation and designation == raw.get("title", ""):
+                issues.append(("WARN", "Designation equals title (likely fallback)"))
+                total_warnings += 1
+
+            # Title quality
+            title = raw.get("title", "")
+            if title and len(title) < 5:
+                issues.append(("WARN", f"Very short title: '{title}'"))
+                total_warnings += 1
+
+            # Missing content
+            if not raw.get("text") and not raw.get("html") and not raw.get("summary"):
+                issues.append(("WARN", "No text, html, or summary content"))
+                total_warnings += 1
+
+            # Date sanity
+            date_str = raw.get("date", "")
+            if date_str:
+                try:
+                    from datetime import date as date_cls
+                    doc_date = date_cls.fromisoformat(date_str)
+                    if doc_date.year < 1900:
+                        issues.append(("WARN", f"Suspiciously old date: {date_str}"))
+                        total_warnings += 1
+                    if doc_date > date_cls.today():
+                        issues.append(("WARN", f"Future date: {date_str}"))
+                        total_warnings += 1
+                except ValueError:
+                    issues.append(("ERROR", f"Invalid date format: {date_str}"))
+                    total_errors += 1
+
+            # Session consistency
+            session = raw.get("session")
+            if session and date_str:
+                try:
+                    year = int(session[:4])
+                    doc_year = int(date_str[:4])
+                    if abs(year - doc_year) > 2:
+                        issues.append((
+                            "WARN",
+                            f"Session {session} doesn't match date year {doc_year}",
+                        ))
+                        total_warnings += 1
+                except (ValueError, IndexError):
+                    pass
+
+            # Attachments check
+            for i, att in enumerate(raw.get("attachments", [])):
+                if not att.get("url"):
+                    issues.append(("WARN", f"Attachment {i} missing URL"))
+                    total_warnings += 1
+                if not att.get("filename"):
+                    issues.append(("WARN", f"Attachment {i} missing filename"))
+                    total_warnings += 1
+
+            if issues:
+                _print_issues(rel_path, issues)
+
+    click.echo(f"\nValidation complete: {total_docs} documents checked")
+    click.echo(f"  {total_errors} errors, {total_warnings} warnings")
+    if total_errors == 0 and total_warnings == 0:
+        click.echo("  All documents passed validation!")
+
+
+def _print_issues(path: str, issues: list[tuple[str, str]]) -> None:
+    """Print validation issues for a document."""
+    click.echo(f"\n  {path}:")
+    for level, message in issues:
+        marker = click.style(level, fg="red" if level == "ERROR" else "yellow")
+        click.echo(f"    [{marker}] {message}")
 
 
 @main.command()

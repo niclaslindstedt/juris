@@ -139,28 +139,36 @@ class HudocCollector(BaseCollector):
     ) -> tuple[str | None, str | None]:
         """Try to fetch the full judgment text from HUDOC.
 
-        Attempts multiple endpoints in order:
-        1. /app/conversion/docx/html/body/ (HTML conversion)
-        2. /app/conversion/pdf/ (PDF, extract text)
+        Attempts multiple endpoints and languages in order:
+        1. Swedish translation via HUDOC language-specific endpoint
+        2. English HTML conversion (default)
+        3. French HTML conversion (many ECHR judgments are in French)
+        4. PDF conversion as final fallback
 
         Returns (text, html) tuple, or (None, None) if all fail.
         """
         client = await self._get_client()
 
-        # Strategy 1: HTML conversion endpoint
-        await self._limiter.wait()
-        html_url = (
-            "https://hudoc.echr.coe.int"
-            f"/app/conversion/docx/html/body/{item_id}"
-        )
-        try:
-            resp = await client.get(html_url)
-            if resp.status_code == 200 and len(resp.text) > 200:
-                raw_html = resp.text
-                text = html_to_text(raw_html)
-                return text, raw_html
-        except httpx.HTTPError:
-            pass
+        # Strategy 1: Try language-specific HTML endpoints (Swedish, English, French)
+        for lang_code in ("SWE", "ENG", "FRE"):
+            await self._limiter.wait()
+            html_url = (
+                "https://hudoc.echr.coe.int"
+                f"/app/conversion/docx/html/body/{item_id}"
+            )
+            try:
+                resp = await client.get(
+                    html_url,
+                    params={"language": lang_code},
+                )
+                if resp.status_code == 200 and len(resp.text) > 200:
+                    raw_html = resp.text
+                    text = html_to_text(raw_html)
+                    if lang_code == "SWE":
+                        logger.info("Found Swedish text for %s", item_id)
+                    return text, raw_html
+            except httpx.HTTPError:
+                continue
 
         # Strategy 2: PDF conversion endpoint
         await self._limiter.wait()
