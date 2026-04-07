@@ -8,9 +8,10 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, man)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, logs, man)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
+├── logging.py          # Collection run logging (JSONL per-document log + text file log)
 ├── search.py           # Document search (local + provider-based, search_local, search_all)
 ├── storage.py          # Dual-format file storage (JSON + Markdown with YAML frontmatter)
 ├── state.py            # Incremental collection state tracking (.state/ directory)
@@ -35,7 +36,8 @@ tests/
 ├── test_registry.py    # Collector auto-discovery and registry tests
 ├── test_retry.py       # Retry logic tests
 ├── test_search.py      # Search functionality tests
-└── test_validate.py    # Document validation tests
+├── test_validate.py    # Document validation tests
+└── test_logging.py     # Collection logging tests
 docs/
 ├── overview.md         # Project overview and use cases
 ├── architecture.md     # System architecture and data flow
@@ -81,7 +83,8 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 
 ```bash
 make install                   # Create .venv and install with dev dependencies
-make lint                      # Lint
+make lint                      # Lint + format check (matches CI)
+make format                    # Auto-format code
 make typecheck                 # Type check (strict mode)
 make test                      # Run unit tests
 make test-e2e                  # Run e2e tests (live APIs, slow)
@@ -93,6 +96,7 @@ Or manually:
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m ruff check src/
+.venv/bin/python -m ruff format --check src/
 .venv/bin/mypy src/
 .venv/bin/pytest tests/ --ignore=tests/test_e2e.py
 ```

@@ -76,29 +76,39 @@ async def collect_from_source(
             limit=limit,
             skip_content=skip_content,
         ):
-            exists = document_exists(
-                doc.doc_id,
-                doc.doc_type,
-                doc.session,
-                data_dir,
-            )
-            if skip_existing and exists:
-                skipped += 1
+            if progress and hasattr(progress, "begin_document"):
+                progress.begin_document(doc)
+
+            path: Path | None = None
+            try:
+                exists = document_exists(
+                    doc.doc_id,
+                    doc.doc_type,
+                    doc.session,
+                    data_dir,
+                )
+                if skip_existing and exists:
+                    skipped += 1
+                    if progress:
+                        progress.on_skip(doc.doc_id)
+                    continue
+
+                if not skip_content:
+                    doc = await collector.download_attachments(doc, data_dir)
+
+                path = save_document(doc, data_dir)
+                collected += 1
                 if progress:
-                    progress.on_skip(doc.doc_id)
-                continue
+                    progress.on_save(doc.doc_id, path)
 
-            if not skip_content:
-                doc = await collector.download_attachments(doc, data_dir)
-
-            path = save_document(doc, data_dir)
-            collected += 1
-            if progress:
-                progress.on_save(doc.doc_id, path)
-
-            state.total_collected += 1
-            if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
-                state.last_fetched_date = str(doc.date)
+                state.total_collected += 1
+                if not state.last_fetched_date or str(doc.date) > state.last_fetched_date:
+                    state.last_fetched_date = str(doc.date)
+            except Exception:
+                logger.exception("Failed to process %s", doc.doc_id)
+            finally:
+                if progress and hasattr(progress, "end_document"):
+                    progress.end_document(doc.doc_id, path)
     finally:
         if progress:
             progress.on_finish()

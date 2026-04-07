@@ -49,10 +49,11 @@ def search_local(
     if doc_type:
         type_dirs = [data_dir / doc_type.value]
     else:
-        type_dirs = [
-            d for d in data_dir.iterdir()
-            if d.is_dir() and not d.name.startswith(".")
-        ] if data_dir.exists() else []
+        type_dirs = (
+            [d for d in data_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+            if data_dir.exists()
+            else []
+        )
 
     for type_dir in type_dirs:
         if not type_dir.exists():
@@ -109,19 +110,21 @@ def search_local(
             except (ValueError, KeyError):
                 continue
 
-            results.append(SearchResult(
-                doc_id=data.get("doc_id", ""),
-                doc_type=dt,
-                title=data.get("title", ""),
-                designation=data.get("designation", ""),
-                session=data.get("session"),
-                date=doc_date,
-                source=src,
-                source_url=data.get("source_url"),
-                summary=data.get("summary"),
-                snippet=snippet,
-                local=True,
-            ))
+            results.append(
+                SearchResult(
+                    doc_id=data.get("doc_id", ""),
+                    doc_type=dt,
+                    title=data.get("title", ""),
+                    designation=data.get("designation", ""),
+                    session=data.get("session"),
+                    date=doc_date,
+                    source=src,
+                    source_url=data.get("source_url"),
+                    summary=data.get("summary"),
+                    snippet=snippet,
+                    local=True,
+                )
+            )
 
     # Sort by date descending (most recent first), undated at end
     results.sort(key=lambda r: r.date or date.min, reverse=True)
@@ -148,13 +151,18 @@ async def search_provider(
         collector = collector_cls()
         try:
             provider_results = await collector.search(
-                query, doc_type=doc_type, limit=limit,
+                query,
+                doc_type=doc_type,
+                limit=limit,
             )
             for r in provider_results:
                 # Check local availability
                 if data_dir and r.doc_id:
                     r.local = document_exists(
-                        r.doc_id, r.doc_type, r.session, data_dir,
+                        r.doc_id,
+                        r.doc_type,
+                        r.session,
+                        data_dir,
                     )
                 results.append(r)
         except NotImplementedError:
@@ -189,7 +197,11 @@ async def search_all(
     # Provider search
     if not local_only:
         provider_results = await search_provider(
-            query, source=source, doc_type=doc_type, limit=limit, data_dir=data_dir,
+            query,
+            source=source,
+            doc_type=doc_type,
+            limit=limit,
+            data_dir=data_dir,
         )
         for r in provider_results:
             key = r.doc_id or r.source_url or r.title
