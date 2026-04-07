@@ -4,7 +4,7 @@ JO (Justitieombudsmannen) — Parliamentary Ombudsman decisions.
 JK (Justitiekanslern) — Chancellor of Justice decisions.
 
 JO uses sitemap-based discovery (WordPress site with decision pages at /besluten/).
-JK uses listing-page scraping at /beslut/ with pagination.
+JK uses POST-based search scraping at /beslut-och-yttranden/ with pagination.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -31,18 +31,49 @@ JK_BASE_URL = "https://www.jk.se"
 # Number of sitemap files to try for JO (resolve-sitemap1.xml .. resolve-sitemap20.xml)
 _JO_SITEMAP_COUNT = 20
 
-# JK listing page size (for pagination stop condition)
-_JK_PAGE_SIZE = 20
+# JK search endpoint (new site uses POST-based search)
+_JK_SEARCH_URL = f"{JK_BASE_URL}/beslut-och-yttranden/"
 
-# Regex patterns for metadata extraction from detail pages
+# All JK decision category IDs (checkboxes on the search form)
+_JK_CATEGORY_IDS = ["39", "40", "41", "42", "43"]
+
+# Regex patterns for metadata extraction from JO detail pages
 _DNR_RE = re.compile(r"Diarienummer[:\s]+(\d{1,5}[–\-]\d{2,4})")
 _DATE_RE = re.compile(r"Beslutsdatum[:\s]+(\d{4}-\d{2}-\d{2})")
 _DECISION_MAKER_RE = re.compile(
     r"Beslutsfattare[:\s]+(.+?)(?=\s+Ladda|\s+Beslutsdatum|\s+Diarienummer|$)"
 )
 
+# JK metadata regex: "Diarienr: 2025/7175 / Beslutsdatum: 04 mar 2026"
+_JK_DNR_RE = re.compile(r"Diarienr:\s*(\d{4}/\d+)")
+_JK_DATE_RE = re.compile(r"Beslutsdatum:\s*(\d{1,2}\s+\w+\s+\d{4})")
+
+# Swedish month name to number mapping
+_SV_MONTHS: dict[str, int] = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "maj": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dec": 12,
+}
+
 # XML namespace used in sitemaps
 _SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+# Default start year for JK decisions (site has decisions from 2000 onwards)
+_JK_DEFAULT_START = "2000-01-01"
+
+
+def _parse_swedish_date(text: str) -> date | None:
+    """Parse a Swedish date like '04 mar 2026' or '4 mar 2026'."""
+    match = re.match(r"(\d{1,2})\s+(\w+)\s+(\d{4})", text.strip())
+    if not match:
+        return None
+    day, month_str, year = match.groups()
+    month = _SV_MONTHS.get(month_str.lower())
+    if not month:
+        return None
+    try:
+        return date(int(year), month, int(day))
+    except ValueError:
+        return None
 
 
 class JoJkCollector(BaseCollector):
@@ -55,7 +86,7 @@ class JoJkCollector(BaseCollector):
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
 
     async def _fetch_html(self, url: str) -> str | None:
-        """Fetch a URL and return the response text, or None on error."""
+        """Fetch a URL via GET and return the response text, or None on error."""
         await self._limiter.wait()
         client = await self._get_client()
         try:
@@ -64,6 +95,20 @@ class JoJkCollector(BaseCollector):
             return resp.text
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("Failed to fetch %s: %s", url, e)
+            return None
+
+    async def _post_html(
+        self, url: str, data: dict[str, str | list[str]]
+    ) -> str | None:
+        """POST form data to a URL and return the response text, or None on error."""
+        await self._limiter.wait()
+        client = await self._get_client()
+        try:
+            resp = await client.post(url, data=data)
+            resp.raise_for_status()
+            return resp.text
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Failed to POST %s: %s", url, e)
             return None
 
     # ------------------------------------------------------------------
@@ -127,7 +172,7 @@ class JoJkCollector(BaseCollector):
         return results
 
     # ------------------------------------------------------------------
-    # JK: Listing-page-based URL discovery
+    # JK: POST-based search discovery
     # ------------------------------------------------------------------
 
     async def _fetch_jk_listing_urls(
@@ -135,22 +180,29 @@ class JoJkCollector(BaseCollector):
         since: date | None = None,
         until: date | None = None,
     ) -> list[dict[str, str]]:
-        """Scrape JK listing pages to collect decision URLs.
+        """Scrape JK search results via POST to collect decision URLs.
 
         Returns list of dicts with keys: url, title.
         """
         results: list[dict[str, str]] = []
+        seen_urls: set[str] = set()
         page = 1
 
-        while True:
-            params: dict[str, str] = {"page": str(page)}
-            if since:
-                params["from"] = since.isoformat()
-            if until:
-                params["to"] = until.isoformat()
+        from_date = since.isoformat() if since else _JK_DEFAULT_START
+        to_date = until.isoformat() if until else date.today().isoformat()
 
-            listing_url = f"{JK_BASE_URL}/beslut/?{urlencode(params)}"
-            html = await self._fetch_html(listing_url)
+        while True:
+            form_data: dict[str, str | list[str]] = {
+                "diarienummer": "",
+                "search": "",
+                "from-date": from_date,
+                "to-date": to_date,
+                "typ": list(_JK_CATEGORY_IDS),
+                "do-search": "",
+                "page": str(page),
+            }
+
+            html = await self._post_html(_JK_SEARCH_URL, form_data)
             if not html:
                 if page == 1:
                     logger.error(
@@ -161,56 +213,68 @@ class JoJkCollector(BaseCollector):
                 break
 
             soup = BeautifulSoup(html, "lxml")
-            items: list[dict[str, str]] = []
-
-            # Strategy 1: <article> elements with links
-            for article in soup.find_all("article"):
-                link = article.find("a", href=True)
-                if link and isinstance(link, Tag):
-                    href = str(link["href"])
-                    title = link.get_text(strip=True)
-                    if title and ("/beslut/" in href or "/besluten/" in href):
-                        items.append(
-                            {
-                                "url": urljoin(JK_BASE_URL, href),
-                                "title": title,
-                            }
-                        )
-
-            # Strategy 2: scan all links matching decision patterns
-            if not items:
-                for link in soup.find_all("a", href=True):
-                    href = str(link["href"])
-                    title = link.get_text(strip=True)
-                    if not title or len(title) < 5:
-                        continue
-                    if re.search(r"/beslut/\d{4}/", href) or "/arenden/" in href:
-                        items.append(
-                            {
-                                "url": urljoin(JK_BASE_URL, href),
-                                "title": title,
-                            }
-                        )
+            items = self._parse_jk_search_results(soup)
 
             if not items:
                 break
 
-            results.extend(items)
+            new_count = 0
+            for item in items:
+                if item["url"] not in seen_urls:
+                    seen_urls.add(item["url"])
+                    results.append(item)
+                    new_count += 1
 
-            if len(items) < _JK_PAGE_SIZE:
+            # No new results means we've exhausted all pages
+            if new_count == 0:
                 break
+
             page += 1
 
-        logger.info("Found %d JK decision URLs from listing pages", len(results))
+        logger.info("Found %d JK decision URLs from search", len(results))
         return results
 
+    @staticmethod
+    def _parse_jk_search_results(soup: BeautifulSoup) -> list[dict[str, str]]:
+        """Parse decision links from the 'Sökresultat' section of a JK search page."""
+        items: list[dict[str, str]] = []
+
+        # Find the search results container (first div.results inside div.ruling-results)
+        ruling_results = soup.find("div", class_="ruling-results")
+        if not ruling_results or not isinstance(ruling_results, Tag):
+            return items
+
+        # The first div.results contains search results; the second is "Senaste beslut"
+        results_div = ruling_results.find("div", class_="results")
+        if not results_div or not isinstance(results_div, Tag):
+            return items
+
+        # Each result is a pair: <div class="date">...</div> <h2><a href="...">title</a></h2>
+        for h2 in results_div.find_all("h2"):
+            link = h2.find("a", href=True)
+            if not link or not isinstance(link, Tag):
+                continue
+            href = str(link["href"])
+            if "/beslut-och-yttranden/" not in href:
+                continue
+            title = link.get_text(strip=True)
+            if not title:
+                continue
+            items.append({
+                "url": urljoin(JK_BASE_URL, href),
+                "title": title,
+            })
+
+        return items
+
     # ------------------------------------------------------------------
-    # Detail page parsing (shared between JO and JK)
+    # Detail page parsing — JO (legacy shared parser)
     # ------------------------------------------------------------------
 
-    def _parse_detail_page(self, html: str, page_url: str, doc_type: DocType) -> Document | None:
-        """Parse a decision detail page into a Document model."""
-        base_url = JO_BASE_URL if doc_type == DocType.JO else JK_BASE_URL
+    def _parse_jo_detail_page(
+        self, html: str, page_url: str
+    ) -> Document | None:
+        """Parse a JO decision detail page into a Document model."""
         soup = BeautifulSoup(html, "lxml")
 
         # Title from <h1>
@@ -231,7 +295,6 @@ class JoJkCollector(BaseCollector):
             except ValueError:
                 pass
         if not doc_date:
-            # Fallback: try ISO date anywhere in text
             iso_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", page_text)
             if iso_match:
                 try:
@@ -247,8 +310,7 @@ class JoJkCollector(BaseCollector):
         session: str | None = None
         dnr_match = _DNR_RE.search(page_text)
         if dnr_match:
-            designation = dnr_match.group(1).replace("\u2013", "-")  # normalize en-dash
-            # Extract year from dnr (e.g. "6037-2025" -> "2025")
+            designation = dnr_match.group(1).replace("\u2013", "-")
             year_match = re.search(r"-(\d{4})$", designation)
             if year_match:
                 session = year_match.group(1)
@@ -258,7 +320,6 @@ class JoJkCollector(BaseCollector):
                     session = f"20{year_match.group(1)}"
 
         if not designation:
-            # Fallback: use URL slug
             slug = page_url.rstrip("/").rsplit("/", 1)[-1]
             designation = slug
 
@@ -271,14 +332,9 @@ class JoJkCollector(BaseCollector):
         if maker_match:
             department = maker_match.group(1).strip()
 
-        # PDF attachments (extract before content, as content extraction mutates soup)
-        attachments = self._extract_attachments(soup, base_url)
-
-        # Extract main content
+        attachments = self._extract_attachments(soup, JO_BASE_URL)
         summary_text, summary_html = extract_page_content(soup)
 
-        # Build a clean summary from the first substantial paragraph,
-        # skipping tag-like fragments (category labels, short metadata)
         clean_summary: str | None = None
         if summary_text:
             for paragraph in re.split(r"\n{2,}", summary_text):
@@ -287,12 +343,12 @@ class JoJkCollector(BaseCollector):
                     clean_summary = stripped[:500]
                     break
 
-        source_id = page_url.replace(base_url, "")
-        doc_id = build_doc_id(doc_type, designation, session)
+        source_id = page_url.replace(JO_BASE_URL, "")
+        doc_id = build_doc_id(DocType.JO, designation, session)
 
         return Document(
             doc_id=doc_id,
-            doc_type=doc_type,
+            doc_type=DocType.JO,
             designation=designation,
             session=session,
             title=title,
@@ -307,6 +363,124 @@ class JoJkCollector(BaseCollector):
             fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
+
+    # ------------------------------------------------------------------
+    # Detail page parsing — JK (new site structure)
+    # ------------------------------------------------------------------
+
+    def _parse_jk_detail_page(
+        self, html: str, page_url: str
+    ) -> Document | None:
+        """Parse a JK decision detail page into a Document model.
+
+        The new JK site has this structure inside div.content:
+          <div class="date">Diarienr: 2025/7175 <span>/</span> Beslutsdatum: 4 mar 2026</div>
+          <h2>Title</h2>
+          <p>Decision text...</p>
+        """
+        soup = BeautifulSoup(html, "lxml")
+
+        # Find the main content div
+        content_div = soup.find("div", class_="content")
+        if not content_div or not isinstance(content_div, Tag):
+            logger.warning("No content div found on %s", page_url)
+            return None
+
+        # Parse metadata from div.date
+        date_div = content_div.find("div", class_="date")
+        date_text = date_div.get_text(" ", strip=True) if date_div else ""
+
+        # Diarienummer: "2025/7175"
+        designation = ""
+        session: str | None = None
+        dnr_match = _JK_DNR_RE.search(date_text)
+        if dnr_match:
+            designation = dnr_match.group(1)  # e.g. "2025/7175"
+            year_match = re.match(r"(\d{4})/", designation)
+            if year_match:
+                session = year_match.group(1)
+
+        # Beslutsdatum: Swedish format "4 mar 2026"
+        doc_date: date | None = None
+        jk_date_match = _JK_DATE_RE.search(date_text)
+        if jk_date_match:
+            doc_date = _parse_swedish_date(jk_date_match.group(1))
+
+        if not doc_date:
+            logger.warning("Could not parse date from %s, using today", page_url)
+            doc_date = date.today()
+
+        if not designation:
+            slug = page_url.rstrip("/").rsplit("/", 1)[-1]
+            designation = slug
+
+        if not session:
+            session = str(doc_date.year)
+
+        # Title from the first <h2> in content div
+        h2 = content_div.find("h2")
+        title = h2.get_text(strip=True) if h2 else ""
+        if not title:
+            logger.warning("No title found on %s", page_url)
+            return None
+
+        # PDF attachments
+        attachments = self._extract_attachments(soup, JK_BASE_URL)
+
+        # Extract text content: everything in the content div after the date and title.
+        # Remove date div and actions div before extracting, clone to avoid mutating soup.
+        content_clone = BeautifulSoup(str(content_div), "lxml")
+        for el in content_clone.find_all("div", class_=["date", "actions"]):
+            el.decompose()
+
+        text_parts: list[str] = []
+        html_parts: list[str] = []
+        body = content_clone.find("div", class_="content")
+        if body and isinstance(body, Tag):
+            for child in body.children:
+                if isinstance(child, Tag) and child.name in (
+                    "p", "h2", "h3", "h4", "ul", "ol", "blockquote"
+                ):
+                    txt = child.get_text(strip=True)
+                    if txt:
+                        text_parts.append(txt)
+                        html_parts.append(str(child))
+
+        summary_text = "\n\n".join(text_parts) if text_parts else None
+        summary_html = "\n".join(html_parts) if html_parts else None
+
+        # Build a clean summary from the first substantial paragraph
+        clean_summary: str | None = None
+        if summary_text:
+            for paragraph in text_parts:
+                if len(paragraph) > 60:
+                    clean_summary = paragraph[:500]
+                    break
+
+        source_id = page_url.replace(JK_BASE_URL, "")
+        doc_id = build_doc_id(DocType.JK, designation, session)
+
+        return Document(
+            doc_id=doc_id,
+            doc_type=DocType.JK,
+            designation=designation,
+            session=session,
+            title=title,
+            summary=clean_summary,
+            text=summary_text,
+            html=summary_html,
+            date=doc_date,
+            department=None,
+            source=Source.JO_JK,
+            source_id=source_id,
+            source_url=page_url,
+            fetched_at=datetime.now(tz=UTC),
+            attachments=attachments,
+        )
+
+    # ------------------------------------------------------------------
+    # Shared helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_attachments(soup: BeautifulSoup, base_url: str) -> list[Attachment]:
@@ -368,7 +542,10 @@ class JoJkCollector(BaseCollector):
             if not detail_html:
                 continue
 
-            doc = self._parse_detail_page(detail_html, item["url"], doc_type)
+            if doc_type == DocType.JO:
+                doc = self._parse_jo_detail_page(detail_html, item["url"])
+            else:
+                doc = self._parse_jk_detail_page(detail_html, item["url"])
             if not doc:
                 continue
 
@@ -401,4 +578,6 @@ class JoJkCollector(BaseCollector):
         if not html:
             return None
 
-        return self._parse_detail_page(html, url, doc_type)
+        if doc_type == DocType.JO:
+            return self._parse_jo_detail_page(html, url)
+        return self._parse_jk_detail_page(html, url)
