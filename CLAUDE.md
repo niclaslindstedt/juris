@@ -35,6 +35,12 @@ tests/
 ├── test_retry.py       # Retry logic tests
 └── test_validate.py    # Document validation tests
 docs/
+├── overview.md         # Project overview and use cases
+├── architecture.md     # System architecture and data flow
+├── collectors.md       # Collector framework and auto-discovery
+├── document-model.md   # Document model, enums, and validation
+├── storage-format.md   # Storage format, directory layout, and state
+├── data-sources.md     # Data source reference (all 8 sources)
 └── parsing-rules.md    # Parsing pipeline documentation
 man/                    # Manual pages (.md Markdown files) for CLI commands
 Makefile                # Dev commands (install, lint, typecheck, test)
@@ -46,7 +52,7 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 ├── scripts/
 │   └── extract-data.ts # Extracts data from Python source → sourceData.ts
 ├── src/
-│   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, etc.)
+│   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, Documentation, etc.)
 │   └── data/
 │       └── sourceData.ts # AUTO-GENERATED from Python source
 ├── package.json
