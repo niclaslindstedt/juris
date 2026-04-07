@@ -35,4 +35,12 @@ jobs:
         run: git checkout main
 
       - name: Run release script
-        run: ./scripts/release.sh ${{ inputs.bump }}
+        id: release
+        run: |
+          ./scripts/release.sh ${{ inputs.bump }}
+          echo "tag=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --ref "${{ steps.release.outputs.tag }}"
