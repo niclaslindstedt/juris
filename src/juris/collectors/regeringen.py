@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
+from juris.pdf import extract_lagr_designation
 from juris.utils import build_doc_id, extract_page_content, parse_swedish_date
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,57 @@ class RegeringenCollector(BaseCollector):
     # Public interface
     # ------------------------------------------------------------------
 
+    async def _try_lagr_designation_from_pdf(
+        self, doc: Document
+    ) -> Document:
+        """For lagrådsremisser, try to extract a better designation from PDF attachments.
+
+        Downloads the first PDF attachment to a temporary location, extracts
+        the designation from metadata or first page header, and updates the
+        document if a match is found.
+        """
+        if doc.doc_type != DocType.LAGR:
+            return doc
+
+        pdf_attachments = [
+            a for a in doc.attachments if a.mime_type == "application/pdf"
+        ]
+        if not pdf_attachments:
+            return doc
+
+        import tempfile
+        from pathlib import Path as _Path
+
+        attachment = pdf_attachments[0]
+        try:
+            await self._limiter.wait()
+            client = await self._get_client()
+            resp = await client.get(attachment.url)
+            resp.raise_for_status()
+
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(resp.content)
+                tmp_path = _Path(tmp.name)
+
+            result = extract_lagr_designation(tmp_path)
+            tmp_path.unlink(missing_ok=True)
+
+            if result:
+                new_designation, new_session = result
+                logger.info(
+                    "Extracted lagr designation from PDF: %s (session %s)",
+                    new_designation, new_session,
+                )
+                doc.designation = new_designation
+                if new_session:
+                    doc.session = new_session
+                doc.doc_id = build_doc_id(doc.doc_type, doc.designation, doc.session)
+
+        except (httpx.HTTPError, OSError) as e:
+            logger.debug("Could not extract lagr designation from PDF: %s", e)
+
+        return doc
+
     async def collect(
         self,
         doc_type: DocType,
@@ -304,6 +356,10 @@ class RegeringenCollector(BaseCollector):
                 doc = self._parse_detail_page(detail_html, item["url"], doc_type)
                 if not doc:
                     continue
+
+                # For lagrådsremisser with fallback designations, try PDF extraction
+                if doc_type == DocType.LAGR and doc.attachments:
+                    doc = await self._try_lagr_designation_from_pdf(doc)
 
                 # Filter by session if requested
                 if session and doc.session != session:
