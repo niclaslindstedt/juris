@@ -5,7 +5,7 @@ export default function Hero() {
     <section className="pt-32 pb-20 px-6">
       <div className="mx-auto max-w-6xl">
         {/* Glow effect */}
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[300px] md:w-[600px] h-[250px] md:h-[400px] bg-accent/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative text-center mb-16">
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
