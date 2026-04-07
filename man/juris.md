@@ -1,0 +1,134 @@
+# juris(1)
+
+## NAME
+
+juris - Swedish legal data collection tool
+
+## SYNOPSIS
+
+```
+juris [--data-dir DIR] [-v | --verbose] COMMAND [ARGS...]
+```
+
+## DESCRIPTION
+
+juris collects Swedish legal documents from public data sources and
+stores them locally as JSON and Markdown files. It supports Swedish
+parliamentary documents, government publications, court decisions,
+ombudsman rulings, regulatory agency rules, and EU/ECHR case law.
+
+Documents are saved in a structured directory layout under the data
+directory, organized by document type and session/year.
+
+## OPTIONS
+
+- `--data-dir DIR` — Output directory for collected data. Defaults to `data`.
+- `-v`, `--verbose` — Enable verbose (DEBUG-level) logging.
+
+## COMMANDS
+
+| Command | Description |
+|---|---|
+| `collect` | Collect documents from a specific source. |
+| `collect-type` | Collect a document type using the best provider. |
+| `collect-all` | Collect all document types from all providers. |
+| `status` | Show collection state for all sources and document types. |
+| `stats` | Count collected documents per type. |
+| `man` | Display manual pages for juris commands. |
+
+## SOURCES
+
+| Source | API | Supported Types |
+|---|---|---|
+| `riksdagen` | Riksdagen open data API (data.riksdagen.se) | prop, sou, mot, bet, dir, skr, sfs |
+| `regeringen` | Regeringen.se scraper (www.regeringen.se) | prop, sou, ds, lagr, dir, skr |
+| `domstol` | Domstolsverket case law API (rattspraxis.etjanst.domstol.se) | nja, ad, hfd, mod, pmod |
+| `jo_jk` | JO/JK decision scrapers (www.jo.se, www.jk.se) | jo, jk |
+| `lagrummet` | Swedish agency regulation scrapers | foreskrift |
+| `eur_lex` | EU CELLAR SPARQL endpoint for EUR-Lex | eu_reg, eu_dir |
+| `curia` | EU CELLAR SPARQL endpoint for CJEU judgments | cjeu |
+| `hudoc` | HUDOC API for ECtHR judgments against Sweden | echr |
+
+## DOCUMENT TYPES
+
+| Type | Description |
+|---|---|
+| `prop` | Propositioner (government bills) |
+| `sou` | Statens offentliga utredningar (public inquiries) |
+| `mot` | Motioner (parliamentary motions) |
+| `bet` | Betankanden (committee reports) |
+| `ds` | Departementsserien (department series) |
+| `lagr` | Lagradsremisser (legal council referrals) |
+| `dir` | Kommittedirektiv (committee directives) |
+| `skr` | Skrivelser (government communications) |
+| `sfs` | Svensk forfattningssamling (Swedish Code of Statutes) |
+| `nja` | Nytt Juridiskt Arkiv (Supreme Court precedents) |
+| `ad` | Arbetsdomstolens domar (Labour Court decisions) |
+| `hfd` | Hogsta forvaltningsdomstolens arsbok (Supreme Admin. Court) |
+| `mod` | Mark- och miljooverdomstolens avgoranden (Land & Env. Court) |
+| `pmod` | Patent- och marknadsoverdomstolens avgoranden (Patent Court) |
+| `jo` | Justitieombudsmannens beslut (Parliamentary Ombudsman) |
+| `jk` | Justitiekanslerns beslut (Chancellor of Justice) |
+| `foreskrift` | Myndighetsforeskrifter (regulatory agency rules) |
+| `eu_reg` | EU regulations (forordningar) |
+| `eu_dir` | EU directives (direktiv) |
+| `cjeu` | CJEU judgments (EU-domstolen) |
+| `echr` | ECtHR judgments (Europadomstolen) |
+
+## STORAGE FORMAT
+
+Each document is saved as both a JSON file (full model dump) and a
+Markdown file (YAML frontmatter + text body). Files are stored under:
+
+```
+<data-dir>/<doc_type>/<session>/<doc_id>.{json,md}
+```
+
+PDF attachments are downloaded to:
+
+```
+<data-dir>/<doc_type>/<session>/attachments/
+```
+
+Collection state is tracked in:
+
+```
+<data-dir>/.state/<source>_<doc_type>.json
+```
+
+## EXAMPLES
+
+Collect propositions from Riksdagen:
+
+```sh
+juris collect riksdagen --type prop --session 2024/25
+```
+
+Collect all SOU using the best provider:
+
+```sh
+juris collect-type sou --since 2024-01-01
+```
+
+Collect everything (dry run):
+
+```sh
+juris collect-all --dry-run
+```
+
+Check collection progress:
+
+```sh
+juris status
+```
+
+Count collected documents:
+
+```sh
+juris stats
+```
+
+## SEE ALSO
+
+[collect](collect), [collect-type](collect-type), [collect-all](collect-all),
+[status](status), [stats](stats)

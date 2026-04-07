@@ -642,9 +642,9 @@ def _print_issues(path: str, issues: list[tuple[str, str]]) -> None:
 def man(command: str) -> None:
     """Display manual pages for juris commands."""
     man_dir = Path(__file__).resolve().parent.parent.parent / "man"
-    page = man_dir / f"{command}.1"
+    page = man_dir / f"{command}.md"
     if not page.exists():
-        available = sorted(p.stem for p in man_dir.glob("*.1"))
+        available = sorted(p.stem for p in man_dir.glob("*.md"))
         raise click.UsageError(f"No manual page for '{command}'. Available: {', '.join(available)}")
     click.echo(page.read_text(encoding="utf-8"))
 

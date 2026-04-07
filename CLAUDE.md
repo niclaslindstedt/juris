@@ -36,7 +36,7 @@ tests/
 └── test_validate.py    # Document validation tests
 docs/
 └── parsing-rules.md    # Parsing pipeline documentation
-man/                    # Manual pages (.1 files) for CLI commands
+man/                    # Manual pages (.md Markdown files) for CLI commands
 Makefile                # Dev commands (install, lint, typecheck, test)
 scripts/
 ├── release.sh          # Semantic version bump + tag creation
@@ -46,7 +46,7 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 ├── scripts/
 │   └── extract-data.ts # Extracts data from Python source → sourceData.ts
 ├── src/
-│   ├── components/     # React components (Navbar, Hero, Terminal, etc.)
+│   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, etc.)
 │   └── data/
 │       └── sourceData.ts # AUTO-GENERATED from Python source
 ├── package.json
