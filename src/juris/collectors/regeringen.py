@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, Source
-from juris.pdf import extract_lagr_designation
+from juris.pdf import extract_ds_designation, extract_lagr_designation
 from juris.utils import build_doc_id, extract_page_content, parse_swedish_date
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ _DESIGNATION_PATTERNS: dict[DocType, list[re.Pattern[str]]] = {
     DocType.DS: [
         re.compile(r"Ds\s+(\d{4}):(\d+)"),
         re.compile(r"ds[- ](\d{4})[- :](\d+)", re.IGNORECASE),
+        re.compile(r"ds[- ]?(\d{4})(\d{1,3})(?:\b|/)", re.IGNORECASE),
     ],
     DocType.DIR: [re.compile(r"Dir\.\s*(\d{4}):(\d+)")],
     DocType.LAGR: [
@@ -155,6 +156,20 @@ class RegeringenCollector(BaseCollector):
             title_tag = soup.find("title")
             if title_tag:
                 designation, session = _parse_designation(title_tag.get_text(), doc_type)
+        if not designation:
+            # Try meta tags (og:title, description, keywords)
+            for meta_name, meta_val in (
+                ("property", "og:title"),
+                ("name", "description"),
+                ("name", "keywords"),
+            ):
+                meta_tag = soup.find("meta", attrs={meta_name: meta_val})
+                if meta_tag and isinstance(meta_tag, Tag):
+                    content = meta_tag.get("content", "")
+                    if isinstance(content, str) and content:
+                        designation, session = _parse_designation(content, doc_type)
+                        if designation:
+                            break
         if not designation:
             # Try extracting from the URL slug (e.g. "/ds-20266/")
             designation, session = _parse_designation(page_url, doc_type)
@@ -300,6 +315,49 @@ class RegeringenCollector(BaseCollector):
 
         return doc
 
+    async def _try_ds_designation_from_pdf(self, doc: Document) -> Document:
+        """For DS docs with fallback designations, try to extract from PDF."""
+        if doc.doc_type != DocType.DS:
+            return doc
+
+        pdf_attachments = [a for a in doc.attachments if a.mime_type == "application/pdf"]
+        if not pdf_attachments:
+            return doc
+
+        import tempfile
+        from pathlib import Path as _Path
+
+        attachment = pdf_attachments[0]
+        try:
+            await self._limiter.wait()
+            client = await self._get_client()
+            resp = await client.get(attachment.url)
+            resp.raise_for_status()
+
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(resp.content)
+                tmp_path = _Path(tmp.name)
+
+            result = extract_ds_designation(tmp_path)
+            tmp_path.unlink(missing_ok=True)
+
+            if result:
+                new_designation, new_session = result
+                logger.info(
+                    "Extracted DS designation from PDF: %s (session %s)",
+                    new_designation,
+                    new_session,
+                )
+                doc.designation = new_designation
+                if new_session:
+                    doc.session = new_session
+                doc.doc_id = build_doc_id(doc.doc_type, doc.designation, doc.session)
+
+        except (httpx.HTTPError, OSError) as e:
+            logger.debug("Could not extract DS designation from PDF: %s", e)
+
+        return doc
+
     async def collect(
         self,
         doc_type: DocType,
@@ -352,9 +410,16 @@ class RegeringenCollector(BaseCollector):
                 if not doc:
                     continue
 
-                # For lagrådsremisser with fallback designations, try PDF extraction
-                if doc_type == DocType.LAGR and doc.attachments:
-                    doc = await self._try_lagr_designation_from_pdf(doc)
+                # For docs with fallback (slug) designations, try PDF extraction
+                is_fallback = len(doc.designation) > 15 or doc.designation.count("-") > 1
+                if doc.attachments and (
+                    doc_type == DocType.LAGR
+                    or (doc_type == DocType.DS and is_fallback)
+                ):
+                    if doc_type == DocType.LAGR:
+                        doc = await self._try_lagr_designation_from_pdf(doc)
+                    elif doc_type == DocType.DS:
+                        doc = await self._try_ds_designation_from_pdf(doc)
 
                 # Filter by session if requested
                 if session and doc.session != session:

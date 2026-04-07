@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -55,6 +55,14 @@ async def collect_from_source(
     src = Source(source_name)
     collector = get_collector_class(source_name)()
     state = load_state(data_dir, src, dt)
+
+    # Auto-set since from state for incremental runs
+    if since is None and skip_existing and state.last_fetched_date:
+        state_date = date.fromisoformat(state.last_fetched_date)
+        since = state_date - timedelta(days=2)
+        logger.info(
+            "Auto-incremental: since=%s (from state minus 2-day buffer)", since
+        )
 
     collected = 0
     skipped = 0

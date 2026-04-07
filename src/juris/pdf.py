@@ -97,6 +97,51 @@ def extract_lagr_designation(path: Path) -> tuple[str, str | None] | None:
     return None
 
 
+def extract_ds_designation(path: Path) -> tuple[str, str | None] | None:
+    """Try to extract DS designation from a PDF's metadata or first page.
+
+    Looks for patterns like "Ds 2026:6" in PDF metadata (Title, Subject, Keywords)
+    and the first page text.
+
+    Returns (designation, session) tuple or None if not found.
+    """
+    try:
+        doc = pymupdf.open(path)  # type: ignore[no-untyped-call]
+    except Exception:
+        logger.warning("Failed to open PDF for DS designation extraction: %s", path)
+        return None
+
+    ds_re = re.compile(r"Ds\s+(\d{4}):(\d+)", re.IGNORECASE)
+
+    try:
+        # Check PDF metadata fields
+        metadata = doc.metadata or {}
+        for field in ("title", "subject", "keywords", "author"):
+            value = metadata.get(field, "") or ""
+            m = ds_re.search(value)
+            if m:
+                doc.close()  # type: ignore[no-untyped-call]
+                return m.group(2), m.group(1)
+
+        # Check first page header text
+        if len(doc) > 0:
+            first_page_text = doc[0].get_text()[:1000]  # type: ignore[no-untyped-call]
+            m = ds_re.search(first_page_text)
+            if m:
+                doc.close()  # type: ignore[no-untyped-call]
+                return m.group(2), m.group(1)
+
+        doc.close()  # type: ignore[no-untyped-call]
+    except Exception:
+        logger.warning("Failed to extract DS designation from PDF: %s", path)
+        try:
+            doc.close()  # type: ignore[no-untyped-call]
+        except Exception:
+            pass
+
+    return None
+
+
 def _extract_from_doc(doc: pymupdf.Document, label: str) -> str | None:
     """Extract and clean text from an open pymupdf Document."""
     try:
