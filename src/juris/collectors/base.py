@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import date
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import httpx
 
@@ -88,7 +88,7 @@ class BaseCollector(ABC):
     async def _get_client(self) -> httpx.AsyncClient:
         """Return the HTTP client (creating it if needed)."""
         if self._client is None or self._client.is_closed:
-            kwargs: dict = {
+            kwargs: dict[str, Any] = {
                 "timeout": self._timeout,
                 "headers": {"User-Agent": USER_AGENT},
                 "follow_redirects": self._follow_redirects,
@@ -107,7 +107,7 @@ class BaseCollector(ABC):
         self,
         method: str,
         url: str,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> httpx.Response:
         """Execute an HTTP request with retry and exponential backoff.
 
@@ -166,7 +166,7 @@ class BaseCollector(ABC):
                 await asyncio.sleep(delay)
 
         # Should not be reached, but satisfy the type checker
-        raise last_exc or httpx.HTTPError("All retries exhausted")  # type: ignore[arg-type]
+        raise last_exc or httpx.HTTPError("All retries exhausted")
 
     @abstractmethod
     def collect(

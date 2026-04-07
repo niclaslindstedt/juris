@@ -17,7 +17,7 @@ def extract_text(path: Path) -> str | None:
     Returns cleaned plain text, or None if extraction fails.
     """
     try:
-        doc = pymupdf.open(path)
+        doc = pymupdf.open(path)  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to open PDF: %s", path)
         return None
@@ -30,7 +30,7 @@ def extract_text_from_bytes(data: bytes) -> str | None:
     Returns cleaned plain text, or None if extraction fails.
     """
     try:
-        doc = pymupdf.open(stream=data, filetype="pdf")
+        doc = pymupdf.open(stream=data, filetype="pdf")  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to open PDF from bytes")
         return None
@@ -46,7 +46,7 @@ def extract_lagr_designation(path: Path) -> tuple[str, str | None] | None:
     Returns (designation, session) tuple or None if not found.
     """
     try:
-        doc = pymupdf.open(path)
+        doc = pymupdf.open(path)  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to open PDF for designation extraction: %s", path)
         return None
@@ -63,34 +63,34 @@ def extract_lagr_designation(path: Path) -> tuple[str, str | None] | None:
             value = metadata.get(field, "") or ""
             m = lagr_re.search(value)
             if m:
-                doc.close()
+                doc.close()  # type: ignore[no-untyped-call]
                 return m.group(2), m.group(1)
             m = dnr_re.search(value)
             if m:
-                doc.close()
+                doc.close()  # type: ignore[no-untyped-call]
                 dnr = m.group(1)
                 year = dnr.split("/")[0][-4:]  # extract year from e.g. "Ju2026"
                 return dnr, year
 
         # Check first page header text (first ~500 chars)
         if len(doc) > 0:
-            first_page_text = doc[0].get_text()[:1000]
+            first_page_text = doc[0].get_text()[:1000]  # type: ignore[no-untyped-call]
             m = lagr_re.search(first_page_text)
             if m:
-                doc.close()
+                doc.close()  # type: ignore[no-untyped-call]
                 return m.group(2), m.group(1)
             m = dnr_re.search(first_page_text)
             if m:
-                doc.close()
+                doc.close()  # type: ignore[no-untyped-call]
                 dnr = m.group(1)
                 year = dnr.split("/")[0][-4:]
                 return dnr, year
 
-        doc.close()
+        doc.close()  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to extract designation from PDF: %s", path)
         try:
-            doc.close()
+            doc.close()  # type: ignore[no-untyped-call]
         except Exception:
             pass
 
@@ -101,9 +101,9 @@ def _extract_from_doc(doc: pymupdf.Document, label: str) -> str | None:
     """Extract and clean text from an open pymupdf Document."""
     try:
         pages: list[str] = []
-        for page in doc:
-            pages.append(page.get_text())
-        doc.close()
+        for page in doc:  # type: ignore[attr-defined]
+            pages.append(page.get_text())  # type: ignore[no-untyped-call]
+        doc.close()  # type: ignore[no-untyped-call]
     except Exception:
         logger.warning("Failed to extract text from PDF: %s", label)
         return None

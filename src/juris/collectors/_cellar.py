@@ -77,7 +77,8 @@ async def sparql_query(
         )
         resp.raise_for_status()
         data = resp.json()
-        return data.get("results", {}).get("bindings", [])
+        result: list[dict[str, dict[str, str]]] = data.get("results", {}).get("bindings", [])
+        return result
     except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.warning("SPARQL query failed: %s", e)
         return []
