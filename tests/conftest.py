@@ -17,7 +17,7 @@ from juris.models import Document
 @pytest.fixture()
 def cli_runner() -> CliRunner:
     """Click CLI test runner."""
-    return CliRunner(mix_stderr=False)
+    return CliRunner()
 
 
 @pytest.fixture()
