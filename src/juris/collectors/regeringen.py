@@ -375,6 +375,7 @@ class RegeringenCollector(BaseCollector):
         path = _DOCTYPE_PATHS[doc_type]
         count = 0
         page = 1
+        seen_urls: set[str] = set()
 
         while True:
             # Build listing URL with pagination and optional date filters
@@ -396,9 +397,20 @@ class RegeringenCollector(BaseCollector):
                 logger.info("No items found on page %d, stopping.", page)
                 break
 
+            # Detect pagination loop: if all items on this page were already
+            # seen, the site is wrapping around — stop paginating.
+            new_on_page = sum(1 for item in items if item["url"] not in seen_urls)
+            if new_on_page == 0:
+                logger.info("All items on page %d already seen, stopping.", page)
+                break
+
             for item in items:
                 if limit and count >= limit:
                     return
+
+                if item["url"] in seen_urls:
+                    continue
+                seen_urls.add(item["url"])
 
                 logger.info("Fetching detail: %s", item["title"][:60])
 
@@ -413,8 +425,7 @@ class RegeringenCollector(BaseCollector):
                 # For docs with fallback (slug) designations, try PDF extraction
                 is_fallback = len(doc.designation) > 15 or doc.designation.count("-") > 1
                 if doc.attachments and (
-                    doc_type == DocType.LAGR
-                    or (doc_type == DocType.DS and is_fallback)
+                    doc_type == DocType.LAGR or (doc_type == DocType.DS and is_fallback)
                 ):
                     if doc_type == DocType.LAGR:
                         doc = await self._try_lagr_designation_from_pdf(doc)
