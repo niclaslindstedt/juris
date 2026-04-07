@@ -20,7 +20,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
-from juris.models import Attachment, DocType, Document, Source
+from juris.models import Attachment, DocType, Document, SearchResult, Source
 from juris.utils import build_doc_id, extract_page_content
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ class JoJkCollector(BaseCollector):
 
     source = Source.JO_JK
     supported_doc_types = [DocType.JO, DocType.JK]
+    supports_search = True
 
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
@@ -244,7 +245,11 @@ class JoJkCollector(BaseCollector):
 
     @staticmethod
     def _parse_jk_search_results(soup: BeautifulSoup) -> list[dict[str, str]]:
-        """Parse decision links from the 'Sökresultat' section of a JK search page."""
+        """Parse decision links from the 'Sökresultat' section of a JK search page.
+
+        Returns list of dicts with keys: url, title, and optionally
+        designation (diarienummer) and date (ISO format).
+        """
         items: list[dict[str, str]] = []
 
         # Find the search results container (first div.results inside div.ruling-results)
@@ -268,10 +273,25 @@ class JoJkCollector(BaseCollector):
             title = link.get_text(strip=True)
             if not title:
                 continue
-            items.append({
+            item: dict[str, str] = {
                 "url": urljoin(JK_BASE_URL, href),
                 "title": title,
-            })
+            }
+
+            # Extract metadata from the preceding div.date sibling
+            date_div = h2.find_previous_sibling("div", class_="date")
+            if date_div and isinstance(date_div, Tag):
+                date_text = date_div.get_text(" ", strip=True)
+                dnr_match = _JK_DNR_RE.search(date_text)
+                if dnr_match:
+                    item["designation"] = dnr_match.group(1)
+                jk_date_match = _JK_DATE_RE.search(date_text)
+                if jk_date_match:
+                    parsed = _parse_swedish_date(jk_date_match.group(1))
+                    if parsed:
+                        item["date"] = parsed.isoformat()
+
+            items.append(item)
 
         return items
 
@@ -519,6 +539,75 @@ class JoJkCollector(BaseCollector):
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
+
+    async def search(
+        self,
+        query: str,
+        *,
+        doc_type: DocType | None = None,
+        limit: int = 20,
+    ) -> list[SearchResult]:
+        """Search JK decisions via the POST search endpoint.
+
+        Only JK supports search (JO uses sitemap-based discovery with no
+        search API).  Returns empty list if doc_type is JO.
+        """
+        if doc_type and doc_type != DocType.JK:
+            return []
+
+        results: list[SearchResult] = []
+        page = 1
+
+        while len(results) < limit:
+            form_data: dict[str, str | list[str]] = {
+                "search": query,
+                "diarienummer": "",
+                "from-date": "",
+                "to-date": "",
+                "typ": list(_JK_CATEGORY_IDS),
+                "do-search": "",
+                "page": str(page),
+            }
+            html = await self._post_html(_JK_SEARCH_URL, form_data)
+            if not html:
+                break
+
+            soup = BeautifulSoup(html, "lxml")
+            items = self._parse_jk_search_results(soup)
+            if not items:
+                break
+
+            for item in items:
+                if len(results) >= limit:
+                    break
+
+                designation = item.get("designation", "")
+                date_str = item.get("date")
+                doc_date = date.fromisoformat(date_str) if date_str else None
+                session = None
+                if designation:
+                    year_match = re.match(r"(\d{4})/", designation)
+                    if year_match:
+                        session = year_match.group(1)
+                if not session and doc_date:
+                    session = str(doc_date.year)
+
+                doc_id = build_doc_id(DocType.JK, designation, session) if designation else ""
+
+                results.append(SearchResult(
+                    doc_id=doc_id,
+                    doc_type=DocType.JK,
+                    title=item["title"],
+                    designation=designation,
+                    session=session,
+                    date=doc_date,
+                    source=Source.JO_JK,
+                    source_url=item["url"],
+                ))
+
+            page += 1
+
+        return results
 
     async def collect(
         self,

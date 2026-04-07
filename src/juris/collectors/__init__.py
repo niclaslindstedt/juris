@@ -14,6 +14,7 @@ from juris.collectors.base import (  # noqa: F401  — re-export registry API
     get_doc_type_providers,
     get_preferred_providers,
     get_registry,
+    get_searchable_sources,
 )
 
 # Backward-compatible re-exports — existing code that does
@@ -41,4 +42,5 @@ __all__ = [
     "get_doc_type_providers",
     "get_preferred_providers",
     "get_registry",
+    "get_searchable_sources",
 ]
