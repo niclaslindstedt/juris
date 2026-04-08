@@ -43,8 +43,6 @@ jobs:
           git add pyproject.toml CHANGELOG.md
           git commit -m "chore(release): update changelog and versions for ${{ github.ref_name }}" || true
           git push origin HEAD:main
-          git tag -f "${{ github.ref_name }}"
-          git push origin "${{ github.ref_name }}" --force
 
   publish-pypi:
     needs: update-repo
@@ -53,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: main
 
       - uses: actions/setup-python@v6
         with:
