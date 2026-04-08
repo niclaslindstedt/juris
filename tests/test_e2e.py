@@ -51,8 +51,17 @@ class TestRiksdagenE2E:
         """Session filtering narrows results to a specific riksmöte."""
         run_collect(
             cli_runner,
-            ["collect", "riksdagen", "--type", "prop", "--session", "2024/25",
-             "--limit", "1", "--skip-content"],
+            [
+                "collect",
+                "riksdagen",
+                "--type",
+                "prop",
+                "--session",
+                "2024/25",
+                "--limit",
+                "1",
+                "--skip-content",
+            ],
             tmp_data_dir,
         )
         docs = load_saved_documents(tmp_data_dir, "prop")
@@ -64,9 +73,19 @@ class TestRiksdagenE2E:
         """Date range filtering limits results by date."""
         run_collect(
             cli_runner,
-            ["collect", "riksdagen", "--type", "prop",
-             "--since", "2025-01-01", "--until", "2025-12-31",
-             "--limit", "1", "--skip-content"],
+            [
+                "collect",
+                "riksdagen",
+                "--type",
+                "prop",
+                "--since",
+                "2025-01-01",
+                "--until",
+                "2025-12-31",
+                "--limit",
+                "1",
+                "--skip-content",
+            ],
             tmp_data_dir,
         )
         docs = load_saved_documents(tmp_data_dir, "prop")
@@ -186,9 +205,7 @@ class TestDomstolE2E:
         for doc in docs:
             assert_document_quality(doc, expected_type="nja")
             # Designation should be a number or case number, not "unknown"
-            assert doc["designation"] != "unknown", (
-                f"NJA designation is 'unknown': {doc['doc_id']}"
-            )
+            assert doc["designation"] != "unknown", f"NJA designation is 'unknown': {doc['doc_id']}"
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +217,13 @@ class TestDomstolE2E:
 class TestJoJkE2E:
     """E2E tests for JO and JK web scrapers."""
 
-    @pytest.mark.parametrize("doc_type", [
-        "jo",
-        pytest.param("jk", marks=pytest.mark.xfail(reason="www.jk.se is unreachable")),
-    ])
+    @pytest.mark.parametrize(
+        "doc_type",
+        [
+            "jo",
+            pytest.param("jk", marks=pytest.mark.xfail(reason="www.jk.se is unreachable")),
+        ],
+    )
     def test_collect_each_type(self, cli_runner, tmp_data_dir, doc_type):
         """Download 1 decision from JO and JK."""
         run_collect(
@@ -242,9 +262,7 @@ class TestLagrummetE2E:
         assert len(docs) >= 1, "No foreskrift documents saved"
 
         for doc in docs:
-            assert_document_quality(
-                doc, expected_type="foreskrift", expected_source="lagrummet"
-            )
+            assert_document_quality(doc, expected_type="foreskrift", expected_source="lagrummet")
             # Föreskrift designation should contain the agency prefix (e.g. AFS, SOSFS)
             assert doc.get("department"), f"Föreskrift missing department: {doc['doc_id']}"
 
@@ -430,8 +448,10 @@ class TestCollectAllCommand:
         )
         # Should have at least some document types populated
         import os
+
         type_dirs = [
-            d for d in os.listdir(tmp_data_dir)
+            d
+            for d in os.listdir(tmp_data_dir)
             if (tmp_data_dir / d).is_dir() and not d.startswith(".")
         ]
         assert len(type_dirs) >= 5, (
@@ -547,8 +567,15 @@ class TestDocumentStructure:
         from juris.cli import main
 
         args = [
-            "--data-dir", str(tmp_data_dir),
-            "collect", "riksdagen", "--type", "mot", "--limit", "1", "--skip-content",
+            "--data-dir",
+            str(tmp_data_dir),
+            "collect",
+            "riksdagen",
+            "--type",
+            "mot",
+            "--limit",
+            "1",
+            "--skip-content",
         ]
         # First run
         result1 = cli_runner.invoke(main, args, catch_exceptions=False)
@@ -581,6 +608,4 @@ class TestDocumentStructure:
                 assert att.get("filename"), f"Attachment missing filename in {doc['doc_id']}"
                 assert att.get("url"), f"Attachment missing URL in {doc['doc_id']}"
                 if att.get("mime_type"):
-                    assert "/" in att["mime_type"], (
-                        f"Invalid MIME type: {att['mime_type']}"
-                    )
+                    assert "/" in att["mime_type"], f"Invalid MIME type: {att['mime_type']}"

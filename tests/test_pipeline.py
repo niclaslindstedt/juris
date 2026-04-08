@@ -11,7 +11,7 @@ import pytest
 from juris.collectors.base import BaseCollector
 from juris.models import DocType, Document, Source
 from juris.pipeline import collect_from_source
-from juris.state import CollectionState, save_state
+from juris.state import CollectionState, load_state, save_state
 
 
 class _FakeCollector(BaseCollector):
@@ -107,9 +107,7 @@ class TestAutoIncremental:
         save_state(state, tmp_data_dir)
 
         explicit_since = date(2026, 1, 1)
-        await collect_from_source(
-            "regeringen", DocType.DS, tmp_data_dir, since=explicit_since
-        )
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, since=explicit_since)
 
         assert _patch_collector.received_since == explicit_since
 
@@ -135,8 +133,40 @@ class TestAutoIncremental:
         )
         save_state(state, tmp_data_dir)
 
-        await collect_from_source(
-            "regeringen", DocType.DS, tmp_data_dir, skip_existing=False
-        )
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
 
         assert _patch_collector.received_since is None
+
+
+class TestTotalAvailablePropagation:
+    """Tests for total_available propagation from collector to state."""
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_total_available_saved_to_state(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        """When collector sets total_available, it should be saved to state."""
+        _patch_collector.total_available = 500
+
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+
+        state = load_state(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert state.total_available == 500
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_total_available_none_preserves_existing(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        """When collector has no total_available, existing state value is kept."""
+        existing = CollectionState(
+            source=Source.REGERINGEN,
+            doc_type=DocType.DS,
+            total_available=300,
+        )
+        save_state(existing, tmp_data_dir)
+
+        # _patch_collector.total_available is None by default
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+
+        state = load_state(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert state.total_available == 300

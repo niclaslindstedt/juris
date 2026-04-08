@@ -78,11 +78,8 @@ class RiksdagenCollector(BaseCollector):
 
     async def _fetch_json(self, url: str) -> dict[str, Any] | None:
         """Fetch a URL and return parsed JSON, or None on error."""
-        await self._limiter.wait()
-        client = await self._get_client()
         try:
-            resp = await client.get(url)
-            resp.raise_for_status()
+            resp = await self._fetch_with_retry("GET", url)
             result: dict[str, Any] = resp.json()
             return result
         except (httpx.HTTPError, ValueError) as e:
@@ -243,6 +240,16 @@ class RiksdagenCollector(BaseCollector):
                 break
 
             doc_list = data.get("dokumentlista", {})
+
+            # Capture API-reported total on first page
+            if self.total_available is None:
+                traffar = doc_list.get("@traffar")
+                if traffar:
+                    try:
+                        self.total_available = int(traffar)
+                    except (ValueError, TypeError):
+                        pass
+
             documents = doc_list.get("dokument", [])
 
             if not documents:

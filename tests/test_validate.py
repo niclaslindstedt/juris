@@ -22,15 +22,20 @@ def _write_doc(data_dir: Path, doc_type: str, filename: str, data: dict) -> Path
 class TestValidateCommand:
     def test_valid_document(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
-        _write_doc(data_dir, "prop", "test.json", {
-            "doc_id": "prop-2024/25:1",
-            "doc_type": "prop",
-            "designation": "1",
-            "title": "En proposition om något viktigt",
-            "date": "2024-10-15",
-            "source": "riksdagen",
-            "text": "This is the full text of the proposition.",
-        })
+        _write_doc(
+            data_dir,
+            "prop",
+            "test.json",
+            {
+                "doc_id": "prop-2024/25:1",
+                "doc_type": "prop",
+                "designation": "1",
+                "title": "En proposition om något viktigt",
+                "date": "2024-10-15",
+                "source": "riksdagen",
+                "text": "This is the full text of the proposition.",
+            },
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(data_dir), "validate"])
@@ -41,14 +46,19 @@ class TestValidateCommand:
 
     def test_missing_required_fields(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
-        _write_doc(data_dir, "prop", "bad.json", {
-            "doc_id": "",
-            "doc_type": "prop",
-            "designation": "",
-            "title": "",
-            "date": "2024-01-01",
-            "source": "riksdagen",
-        })
+        _write_doc(
+            data_dir,
+            "prop",
+            "bad.json",
+            {
+                "doc_id": "",
+                "doc_type": "prop",
+                "designation": "",
+                "title": "",
+                "date": "2024-01-01",
+                "source": "riksdagen",
+            },
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(data_dir), "validate"])
@@ -76,15 +86,20 @@ class TestValidateCommand:
 
     def test_suspicious_date(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
-        _write_doc(data_dir, "sou", "old.json", {
-            "doc_id": "sou-1800:1",
-            "doc_type": "sou",
-            "designation": "1",
-            "title": "Very old document",
-            "date": "1800-01-01",
-            "source": "riksdagen",
-            "text": "Old text",
-        })
+        _write_doc(
+            data_dir,
+            "sou",
+            "old.json",
+            {
+                "doc_id": "sou-1800:1",
+                "doc_type": "sou",
+                "designation": "1",
+                "title": "Very old document",
+                "date": "1800-01-01",
+                "source": "riksdagen",
+                "text": "Old text",
+            },
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(data_dir), "validate"])
@@ -93,14 +108,19 @@ class TestValidateCommand:
 
     def test_missing_content_warning(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
-        _write_doc(data_dir, "prop", "nocontent.json", {
-            "doc_id": "prop-2024/25:99",
-            "doc_type": "prop",
-            "designation": "99",
-            "title": "A proposition without content",
-            "date": "2024-06-01",
-            "source": "riksdagen",
-        })
+        _write_doc(
+            data_dir,
+            "prop",
+            "nocontent.json",
+            {
+                "doc_id": "prop-2024/25:99",
+                "doc_type": "prop",
+                "designation": "99",
+                "title": "A proposition without content",
+                "date": "2024-06-01",
+                "source": "riksdagen",
+            },
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(data_dir), "validate"])
@@ -115,24 +135,34 @@ class TestValidateCommand:
 
     def test_type_filter(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
-        _write_doc(data_dir, "prop", "p1.json", {
-            "doc_id": "prop-2024/25:1",
-            "doc_type": "prop",
-            "designation": "1",
-            "title": "A proposition",
-            "date": "2024-01-01",
-            "source": "riksdagen",
-            "text": "text",
-        })
-        _write_doc(data_dir, "sou", "s1.json", {
-            "doc_id": "sou-2024:1",
-            "doc_type": "sou",
-            "designation": "1",
-            "title": "An SOU",
-            "date": "2024-01-01",
-            "source": "riksdagen",
-            "text": "text",
-        })
+        _write_doc(
+            data_dir,
+            "prop",
+            "p1.json",
+            {
+                "doc_id": "prop-2024/25:1",
+                "doc_type": "prop",
+                "designation": "1",
+                "title": "A proposition",
+                "date": "2024-01-01",
+                "source": "riksdagen",
+                "text": "text",
+            },
+        )
+        _write_doc(
+            data_dir,
+            "sou",
+            "s1.json",
+            {
+                "doc_id": "sou-2024:1",
+                "doc_type": "sou",
+                "designation": "1",
+                "title": "An SOU",
+                "date": "2024-01-01",
+                "source": "riksdagen",
+                "text": "text",
+            },
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(data_dir), "validate", "--type", "prop"])

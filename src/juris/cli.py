@@ -743,9 +743,12 @@ def _display_report(rpt: CollectionReport) -> None:
     click.echo(f"Collection Report ({rpt.generated_at})")
     click.echo(f"Total: {rpt.total_documents:,} documents across {rpt.total_doc_types} doc types\n")
 
-    hdr = f"  {'Type':<14s} {'Source':<12s} {'On disk':>8s}  {'Date range':<23s} {'Last run':<12s}"
+    hdr = (
+        f"  {'Type':<14s} {'Source':<12s} {'On disk':>8s}"
+        f"  {'Available':>10s}  {'Date range':<23s} {'Last run':<12s}"
+    )
     click.echo(hdr)
-    click.echo(f"  {'─' * 73}")
+    click.echo(f"  {'─' * 85}")
 
     empty_types: list[str] = []
     for s in rpt.doc_types:
@@ -754,14 +757,19 @@ def _display_report(rpt: CollectionReport) -> None:
         else:
             dr = "—"
         last_run = s.last_run_at[:10] if s.last_run_at else "—"
+        if s.total_available is not None:
+            avail = f"{s.total_available:,}"
+        else:
+            avail = "—"
         mark = "  <- empty" if s.on_disk == 0 else ""
         click.echo(
-            f"  {s.doc_type:<14s} {s.source:<12s} {s.on_disk:>8,}  {dr:<23s} {last_run:<12s}{mark}"
+            f"  {s.doc_type:<14s} {s.source:<12s} {s.on_disk:>8,}"
+            f"  {avail:>10s}  {dr:<23s} {last_run:<12s}{mark}"
         )
         if s.on_disk == 0:
             empty_types.append(s.doc_type)
 
-    click.echo(f"  {'─' * 73}")
+    click.echo(f"  {'─' * 85}")
     click.echo(f"  {'Total':<14s} {'':12s} {rpt.total_documents:>8,}")
 
     # Coverage by year
@@ -909,9 +917,13 @@ def status(ctx: click.Context) -> None:
         src = data.get("source", "?")
         dt = data.get("doc_type", "?")
         total = data.get("total_collected", 0)
+        available = data.get("total_available")
         last_date = data.get("last_fetched_date", "—")
         last_run = data.get("last_run_at", "—")
-        click.echo(f"  {src}/{dt}: {total} docs, latest={last_date}, last_run={last_run}")
+        avail_str = f", available={available}" if available else ""
+        click.echo(
+            f"  {src}/{dt}: {total} docs{avail_str}, latest={last_date}, last_run={last_run}"
+        )
 
 
 @main.command()

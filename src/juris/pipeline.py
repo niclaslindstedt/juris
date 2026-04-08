@@ -112,5 +112,8 @@ async def collect_from_source(
             progress.on_finish()
         await collector.close()
 
+    if collector.total_available is not None:
+        state.total_available = collector.total_available
+
     save_state(state, data_dir)
     return collected, skipped

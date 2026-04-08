@@ -31,50 +31,59 @@ def sample_docs(tmp_path: Path) -> Path:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 
-    _write_doc(data_dir, {
-        "doc_id": "jk-2024-1234",
-        "doc_type": "jk",
-        "designation": "2024/1234",
-        "title": "Beslut om yttrandefrihet",
-        "summary": "En utredning om yttrandefrihet och tryckfrihet.",
-        "text": "Detta beslut rör frågor om yttrandefrihet i media.",
-        "date": "2024-03-15",
-        "session": "2024",
-        "source": "jo_jk",
-        "source_id": "/beslut/1234",
-        "source_url": "https://www.jk.se/beslut/1234",
-        "fetched_at": datetime.now().isoformat(),
-    })
+    _write_doc(
+        data_dir,
+        {
+            "doc_id": "jk-2024-1234",
+            "doc_type": "jk",
+            "designation": "2024/1234",
+            "title": "Beslut om yttrandefrihet",
+            "summary": "En utredning om yttrandefrihet och tryckfrihet.",
+            "text": "Detta beslut rör frågor om yttrandefrihet i media.",
+            "date": "2024-03-15",
+            "session": "2024",
+            "source": "jo_jk",
+            "source_id": "/beslut/1234",
+            "source_url": "https://www.jk.se/beslut/1234",
+            "fetched_at": datetime.now().isoformat(),
+        },
+    )
 
-    _write_doc(data_dir, {
-        "doc_id": "echr-2023-56789",
-        "doc_type": "echr",
-        "designation": "56789/20",
-        "title": "Case of Smith v. Sweden",
-        "summary": "Violation of Article 10 - Freedom of expression.",
-        "text": "The applicant alleged a violation of freedom of expression.",
-        "date": "2023-06-01",
-        "session": "2023",
-        "source": "hudoc",
-        "source_id": "item-56789",
-        "source_url": "https://hudoc.echr.coe.int/eng?i=item-56789",
-        "fetched_at": datetime.now().isoformat(),
-    })
+    _write_doc(
+        data_dir,
+        {
+            "doc_id": "echr-2023-56789",
+            "doc_type": "echr",
+            "designation": "56789/20",
+            "title": "Case of Smith v. Sweden",
+            "summary": "Violation of Article 10 - Freedom of expression.",
+            "text": "The applicant alleged a violation of freedom of expression.",
+            "date": "2023-06-01",
+            "session": "2023",
+            "source": "hudoc",
+            "source_id": "item-56789",
+            "source_url": "https://hudoc.echr.coe.int/eng?i=item-56789",
+            "fetched_at": datetime.now().isoformat(),
+        },
+    )
 
-    _write_doc(data_dir, {
-        "doc_id": "prop-2024-25-100",
-        "doc_type": "prop",
-        "designation": "100",
-        "title": "Proposition om dataskydd",
-        "summary": "En proposition om dataskydd och integritet.",
-        "text": "Regeringen föreslår nya regler för dataskydd.",
-        "date": "2024-11-01",
-        "session": "2024/25",
-        "source": "riksdagen",
-        "source_id": "H503100",
-        "source_url": "https://data.riksdagen.se/dokument/H503100",
-        "fetched_at": datetime.now().isoformat(),
-    })
+    _write_doc(
+        data_dir,
+        {
+            "doc_id": "prop-2024-25-100",
+            "doc_type": "prop",
+            "designation": "100",
+            "title": "Proposition om dataskydd",
+            "summary": "En proposition om dataskydd och integritet.",
+            "text": "Regeringen föreslår nya regler för dataskydd.",
+            "date": "2024-11-01",
+            "session": "2024/25",
+            "source": "riksdagen",
+            "source_id": "H503100",
+            "source_url": "https://data.riksdagen.se/dokument/H503100",
+            "fetched_at": datetime.now().isoformat(),
+        },
+    )
 
     return data_dir
 
@@ -219,9 +228,13 @@ class TestSearchCli:
         result = runner.invoke(
             main,
             [
-                "--data-dir", str(sample_docs),
-                "search", "yttrandefrihet",
-                "--local-only", "--type", "jk",
+                "--data-dir",
+                str(sample_docs),
+                "search",
+                "yttrandefrihet",
+                "--local-only",
+                "--type",
+                "jk",
             ],
             catch_exceptions=False,
         )
@@ -235,9 +248,12 @@ class TestSearchCli:
         result = runner.invoke(
             main,
             [
-                "--data-dir", str(sample_docs),
-                "search", "test",
-                "--local-only", "--provider-only",
+                "--data-dir",
+                str(sample_docs),
+                "search",
+                "test",
+                "--local-only",
+                "--provider-only",
             ],
         )
         assert result.exit_code != 0

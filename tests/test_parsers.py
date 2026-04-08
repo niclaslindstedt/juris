@@ -18,6 +18,7 @@ from juris.utils import build_doc_id, html_to_text, parse_swedish_date, sanitize
 # _parse_nja_reference
 # ---------------------------------------------------------------------------
 
+
 class TestParseNjaReference:
     def test_standard_colon_format(self) -> None:
         assert _parse_nja_reference(["NJA 2025:19"]) == ("19", "2025")
@@ -47,6 +48,7 @@ class TestParseNjaReference:
 # _parse_ad_reference
 # ---------------------------------------------------------------------------
 
+
 class TestParseAdReference:
     def test_standard_format(self) -> None:
         assert _parse_ad_reference(["AD 2025 nr 19"]) == ("19", "2025")
@@ -61,6 +63,7 @@ class TestParseAdReference:
 # ---------------------------------------------------------------------------
 # _parse_hfd_reference
 # ---------------------------------------------------------------------------
+
 
 class TestParseHfdReference:
     def test_hfd_format(self) -> None:
@@ -77,6 +80,7 @@ class TestParseHfdReference:
 # _parse_mod_reference
 # ---------------------------------------------------------------------------
 
+
 class TestParseModReference:
     def test_standard_format(self) -> None:
         assert _parse_mod_reference(["MÖD 2011:26"]) == ("26", "2011")
@@ -88,6 +92,7 @@ class TestParseModReference:
 # ---------------------------------------------------------------------------
 # _parse_designation (Regeringen.se)
 # ---------------------------------------------------------------------------
+
 
 class TestParseDesignation:
     def test_prop(self) -> None:
@@ -136,6 +141,7 @@ class TestParseDesignation:
 # build_doc_id
 # ---------------------------------------------------------------------------
 
+
 class TestBuildDocId:
     def test_with_session(self) -> None:
         assert build_doc_id(DocType.PROP, "208", "2024/25") == "prop-2024/25:208"
@@ -151,6 +157,7 @@ class TestBuildDocId:
 # sanitize_filename
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeFilename:
     def test_prop(self) -> None:
         assert sanitize_filename("prop-2024/25:208") == "prop-2024-25_208"
@@ -165,6 +172,7 @@ class TestSanitizeFilename:
 # ---------------------------------------------------------------------------
 # parse_swedish_date
 # ---------------------------------------------------------------------------
+
 
 class TestParseSwedishDate:
     def test_standard_format(self) -> None:
@@ -189,6 +197,7 @@ class TestParseSwedishDate:
 # ---------------------------------------------------------------------------
 # html_to_text
 # ---------------------------------------------------------------------------
+
 
 class TestHtmlToText:
     def test_basic(self) -> None:

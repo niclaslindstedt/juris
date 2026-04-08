@@ -367,15 +367,31 @@ class TestLogsCommand:
         from juris.cli import main
 
         log_dir = tmp_path / ".logs"
-        self._write_jsonl(log_dir, "2026-04-07T14-30-00_riksdagen_prop", [
-            {"doc_id": "prop-2024/25:1", "status": "ok", "doc_type": "prop",
-             "source": "riksdagen", "warnings": [], "timestamp": "2026-04-07T14:30:00+00:00"},
-            {"type": "summary", "source": "riksdagen", "doc_type": "prop",
-             "started_at": "2026-04-07T14:30:00+00:00",
-             "finished_at": "2026-04-07T14:31:00+00:00",
-             "total_collected": 1, "total_skipped": 0,
-             "total_failed": 0, "total_warnings": 0},
-        ])
+        self._write_jsonl(
+            log_dir,
+            "2026-04-07T14-30-00_riksdagen_prop",
+            [
+                {
+                    "doc_id": "prop-2024/25:1",
+                    "status": "ok",
+                    "doc_type": "prop",
+                    "source": "riksdagen",
+                    "warnings": [],
+                    "timestamp": "2026-04-07T14:30:00+00:00",
+                },
+                {
+                    "type": "summary",
+                    "source": "riksdagen",
+                    "doc_type": "prop",
+                    "started_at": "2026-04-07T14:30:00+00:00",
+                    "finished_at": "2026-04-07T14:31:00+00:00",
+                    "total_collected": 1,
+                    "total_skipped": 0,
+                    "total_failed": 0,
+                    "total_warnings": 0,
+                },
+            ],
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(tmp_path), "logs"])
@@ -386,18 +402,40 @@ class TestLogsCommand:
         from juris.cli import main
 
         log_dir = tmp_path / ".logs"
-        self._write_jsonl(log_dir, "2026-04-07T14-30-00_riksdagen_prop", [
-            {"type": "summary", "source": "riksdagen", "doc_type": "prop",
-             "started_at": "x", "finished_at": "x",
-             "total_collected": 5, "total_skipped": 0,
-             "total_failed": 0, "total_warnings": 0},
-        ])
-        self._write_jsonl(log_dir, "2026-04-07T14-30-00_hudoc_echr", [
-            {"type": "summary", "source": "hudoc", "doc_type": "echr",
-             "started_at": "x", "finished_at": "x",
-             "total_collected": 3, "total_skipped": 0,
-             "total_failed": 0, "total_warnings": 0},
-        ])
+        self._write_jsonl(
+            log_dir,
+            "2026-04-07T14-30-00_riksdagen_prop",
+            [
+                {
+                    "type": "summary",
+                    "source": "riksdagen",
+                    "doc_type": "prop",
+                    "started_at": "x",
+                    "finished_at": "x",
+                    "total_collected": 5,
+                    "total_skipped": 0,
+                    "total_failed": 0,
+                    "total_warnings": 0,
+                },
+            ],
+        )
+        self._write_jsonl(
+            log_dir,
+            "2026-04-07T14-30-00_hudoc_echr",
+            [
+                {
+                    "type": "summary",
+                    "source": "hudoc",
+                    "doc_type": "echr",
+                    "started_at": "x",
+                    "finished_at": "x",
+                    "total_collected": 3,
+                    "total_skipped": 0,
+                    "total_failed": 0,
+                    "total_warnings": 0,
+                },
+            ],
+        )
 
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(tmp_path), "logs", "--source", "riksdagen"])
@@ -409,17 +447,40 @@ class TestLogsCommand:
         from juris.cli import main
 
         log_dir = tmp_path / ".logs"
-        self._write_jsonl(log_dir, "2026-04-07T14-30-00_riksdagen_prop", [
-            {"doc_id": "prop-2024/25:1", "status": "ok", "doc_type": "prop",
-             "source": "riksdagen", "warnings": [], "timestamp": "x"},
-            {"doc_id": "prop-2024/25:2", "status": "failed", "doc_type": "prop",
-             "source": "riksdagen", "warnings": [], "error": "timeout",
-             "timestamp": "x"},
-            {"type": "summary", "source": "riksdagen", "doc_type": "prop",
-             "started_at": "x", "finished_at": "x",
-             "total_collected": 1, "total_skipped": 0,
-             "total_failed": 1, "total_warnings": 0},
-        ])
+        self._write_jsonl(
+            log_dir,
+            "2026-04-07T14-30-00_riksdagen_prop",
+            [
+                {
+                    "doc_id": "prop-2024/25:1",
+                    "status": "ok",
+                    "doc_type": "prop",
+                    "source": "riksdagen",
+                    "warnings": [],
+                    "timestamp": "x",
+                },
+                {
+                    "doc_id": "prop-2024/25:2",
+                    "status": "failed",
+                    "doc_type": "prop",
+                    "source": "riksdagen",
+                    "warnings": [],
+                    "error": "timeout",
+                    "timestamp": "x",
+                },
+                {
+                    "type": "summary",
+                    "source": "riksdagen",
+                    "doc_type": "prop",
+                    "started_at": "x",
+                    "finished_at": "x",
+                    "total_collected": 1,
+                    "total_skipped": 0,
+                    "total_failed": 1,
+                    "total_warnings": 0,
+                },
+            ],
+        )
 
         runner = CliRunner()
         result = runner.invoke(
@@ -434,17 +495,40 @@ class TestLogsCommand:
         from juris.cli import main
 
         log_dir = tmp_path / ".logs"
-        self._write_jsonl(log_dir, "2026-04-07T14-30-00_riksdagen_prop", [
-            {"doc_id": "prop-2024/25:1", "status": "ok", "doc_type": "prop",
-             "source": "riksdagen", "warnings": [], "timestamp": "x"},
-            {"doc_id": "prop-2024/25:2", "status": "failed", "doc_type": "prop",
-             "source": "riksdagen", "warnings": ["retry failed"],
-             "error": "timeout", "timestamp": "x"},
-            {"type": "summary", "source": "riksdagen", "doc_type": "prop",
-             "started_at": "x", "finished_at": "x",
-             "total_collected": 1, "total_skipped": 0,
-             "total_failed": 1, "total_warnings": 1},
-        ])
+        self._write_jsonl(
+            log_dir,
+            "2026-04-07T14-30-00_riksdagen_prop",
+            [
+                {
+                    "doc_id": "prop-2024/25:1",
+                    "status": "ok",
+                    "doc_type": "prop",
+                    "source": "riksdagen",
+                    "warnings": [],
+                    "timestamp": "x",
+                },
+                {
+                    "doc_id": "prop-2024/25:2",
+                    "status": "failed",
+                    "doc_type": "prop",
+                    "source": "riksdagen",
+                    "warnings": ["retry failed"],
+                    "error": "timeout",
+                    "timestamp": "x",
+                },
+                {
+                    "type": "summary",
+                    "source": "riksdagen",
+                    "doc_type": "prop",
+                    "started_at": "x",
+                    "finished_at": "x",
+                    "total_collected": 1,
+                    "total_skipped": 0,
+                    "total_failed": 1,
+                    "total_warnings": 1,
+                },
+            ],
+        )
 
         runner = CliRunner()
         result = runner.invoke(

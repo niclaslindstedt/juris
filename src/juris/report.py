@@ -35,6 +35,7 @@ class DocTypeStats(BaseModel):
     last_fetched_date: str | None = None
     last_run_at: str | None = None
     total_collected: int = 0
+    total_available: int | None = None
 
 
 class CollectionReport(BaseModel):
@@ -192,6 +193,7 @@ def generate_report(data_dir: Path) -> CollectionReport:
             last_fetched_date=state.last_fetched_date if state else None,
             last_run_at=state.last_run_at if state else None,
             total_collected=state.total_collected if state else 0,
+            total_available=state.total_available if state else None,
         )
         doc_type_stats.append(stats)
         total += on_disk
