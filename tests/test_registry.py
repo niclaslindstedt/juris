@@ -52,9 +52,7 @@ class TestDocTypeProviders:
         registry = get_registry()
         for dt, source_names in get_doc_type_providers().items():
             for name in source_names:
-                assert name in registry, (
-                    f"Provider '{name}' for {dt} not in registry"
-                )
+                assert name in registry, f"Provider '{name}' for {dt} not in registry"
 
 
 class TestPreferredProviders:
@@ -88,9 +86,7 @@ class TestCollectorAttributes:
 
     def test_all_have_supported_doc_types(self) -> None:
         for name, cls in get_registry().items():
-            assert len(cls.supported_doc_types) > 0, (
-                f"Collector {name} has no supported_doc_types"
-            )
+            assert len(cls.supported_doc_types) > 0, f"Collector {name} has no supported_doc_types"
 
     def test_preferred_for_is_subset_of_supported(self) -> None:
         for name, cls in get_registry().items():

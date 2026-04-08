@@ -48,8 +48,9 @@ def load_saved_markdown(data_dir: Path, doc_type: str) -> list[Path]:
     return sorted(type_dir.rglob("*.md"))
 
 
-def assert_document_quality(doc: dict, *, expected_type: str | None = None,
-                            expected_source: str | None = None) -> None:
+def assert_document_quality(
+    doc: dict, *, expected_type: str | None = None, expected_source: str | None = None
+) -> None:
     """Validate that a saved document meets quality standards.
 
     Checks required fields, data types, and consistency rules.
@@ -95,9 +96,7 @@ def assert_document_quality(doc: dict, *, expected_type: str | None = None,
     session = doc.get("session")
     if session:
         # Session should look like a year or "YYYY/YY"
-        assert re.match(r"^\d{4}(/\d{2})?$", session), (
-            f"Session has unexpected format: '{session}'"
-        )
+        assert re.match(r"^\d{4}(/\d{2})?$", session), f"Session has unexpected format: '{session}'"
 
     # Pydantic model validation — the document must be loadable
     Document.model_validate(doc)
