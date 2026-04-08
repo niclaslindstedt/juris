@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
+import time
 from datetime import date
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from juris.collectors import (
 from juris.logging import CollectionLogger, CompositeProgress, log_dir_path, setup_file_logging
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
+from juris.report import CollectionReport, ReportDiff
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +196,77 @@ def _parse_date(value: str | None) -> date | None:
     if value is None:
         return None
     return date.fromisoformat(value)
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format seconds as a human-readable duration."""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}m{s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m"
+
+
+@dataclasses.dataclass
+class _TypeResult:
+    """Tracks the outcome of collecting a single doc type."""
+
+    doc_type: str
+    source: str
+    status: str = "pending"  # pending | running | done | failed
+    collected: int = 0
+    skipped: int = 0
+    error: str | None = None
+
+
+class _CollectAllTracker:
+    """Tracks overall progress for a collect-all run."""
+
+    def __init__(self, plan: list[tuple[DocType, str]]) -> None:
+        self._results: dict[str, _TypeResult] = {
+            dt.value: _TypeResult(doc_type=dt.value, source=src) for dt, src in plan
+        }
+        self._plan_order = [dt.value for dt, _ in plan]
+        self._start = time.monotonic()
+
+    def mark_started(self, doc_type: str) -> None:
+        self._results[doc_type].status = "running"
+
+    def mark_finished(self, doc_type: str, collected: int, skipped: int) -> None:
+        r = self._results[doc_type]
+        r.status = "done"
+        r.collected = collected
+        r.skipped = skipped
+
+    def mark_failed(self, doc_type: str, error: str) -> None:
+        r = self._results[doc_type]
+        r.status = "failed"
+        r.error = error
+
+    def print_status_line(self) -> None:
+        done = sum(1 for r in self._results.values() if r.status in ("done", "failed"))
+        total_c = sum(r.collected for r in self._results.values())
+        total_s = sum(r.skipped for r in self._results.values())
+        failed = sum(1 for r in self._results.values() if r.status == "failed")
+        elapsed = _format_elapsed(time.monotonic() - self._start)
+        parts = [
+            f"[{done}/{len(self._results)} types done]",
+            f"{elapsed} elapsed",
+            f"{total_c} saved, {total_s} skipped",
+        ]
+        if failed:
+            parts.append(f"{failed} failed")
+        click.echo("  " + " | ".join(parts))
+
+    def elapsed(self) -> str:
+        return _format_elapsed(time.monotonic() - self._start)
+
+    @property
+    def results(self) -> dict[str, _TypeResult]:
+        return self._results
 
 
 class _ProgressTracker:
@@ -541,13 +615,14 @@ def collect_all(
             click.echo("Mode: sequential")
         return
 
+    tracker = _CollectAllTracker(plan)
+
     click.echo(f"Collecting {len(plan)} document types from {len({s for _, s in plan})} providers")
 
     if concurrent:
         click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
 
-        async def _run_concurrent() -> tuple[int, int]:
-            # Group by source to avoid hammering the same API concurrently
+        async def _run_concurrent() -> None:
             source_groups: dict[str, list[DocType]] = {}
             for dt, source_name in plan:
                 source_groups.setdefault(source_name, []).append(dt)
@@ -555,20 +630,18 @@ def collect_all(
             semaphore = asyncio.Semaphore(max_concurrency)
             logs = log_dir_path(data_dir)
 
-            async def _collect_group(source_name: str, doc_types: list[DocType]) -> tuple[int, int]:
-                """Collect all doc types for a single source sequentially."""
-                group_collected = 0
-                group_skipped = 0
+            async def _collect_group(source_name: str, doc_types: list[DocType]) -> None:
                 async with semaphore:
                     for dt in doc_types:
+                        tracker.mark_started(dt.value)
                         click.echo(f"  Starting {dt.value} <- {source_name}")
                         collection_logger = CollectionLogger(logs, source_name, dt.value)
                         file_handler = setup_file_logging(logs, source_name, dt.value)
-                        tracker = _ProgressTracker(
+                        progress_bar = _ProgressTracker(
                             f"{source_name}/{dt.value}",
                             total=limit,
                         )
-                        progress = CompositeProgress(tracker, collection_logger)
+                        progress = CompositeProgress(progress_bar, collection_logger)
                         try:
                             collected, skipped = await collect_from_source(
                                 source_name,
@@ -581,44 +654,37 @@ def collect_all(
                                 skip_content=skip_content,
                                 progress=progress,
                             )
-                            click.echo(
-                                f"  Done {source_name}/{dt.value}: "
-                                f"{collected} collected, {skipped} skipped"
-                            )
-                            group_collected += collected
-                            group_skipped += skipped
+                            tracker.mark_finished(dt.value, collected, skipped)
+                        except Exception as exc:
+                            tracker.mark_failed(dt.value, str(exc))
+                            click.echo(f"  ERROR {dt.value}: {exc}", err=True)
                         finally:
                             logging.getLogger().removeHandler(file_handler)
                             file_handler.close()
-                return group_collected, group_skipped
+                        tracker.print_status_line()
 
             tasks = [
                 _collect_group(source_name, doc_types)
                 for source_name, doc_types in source_groups.items()
             ]
-            results = await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
-            grand_collected = sum(c for c, _ in results)
-            grand_skipped = sum(s for _, s in results)
-            return grand_collected, grand_skipped
-
-        total_collected, total_skipped = asyncio.run(_run_concurrent())
+        asyncio.run(_run_concurrent())
     else:
 
-        async def _run_sequential() -> tuple[int, int]:
-            grand_collected = 0
-            grand_skipped = 0
+        async def _run_sequential() -> None:
             logs = log_dir_path(data_dir)
 
             for i, (dt, source_name) in enumerate(plan, 1):
+                tracker.mark_started(dt.value)
                 click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {source_name}")
                 collection_logger = CollectionLogger(logs, source_name, dt.value)
                 file_handler = setup_file_logging(logs, source_name, dt.value)
-                tracker = _ProgressTracker(
+                progress_bar = _ProgressTracker(
                     f"{source_name}/{dt.value}",
                     total=limit,
                 )
-                progress = CompositeProgress(tracker, collection_logger)
+                progress = CompositeProgress(progress_bar, collection_logger)
                 try:
                     collected, skipped = await collect_from_source(
                         source_name,
@@ -631,23 +697,200 @@ def collect_all(
                         skip_content=skip_content,
                         progress=progress,
                     )
-                    click.echo(
-                        f"  {source_name}/{dt.value}: {collected} collected, {skipped} skipped"
-                    )
-                    grand_collected += collected
-                    grand_skipped += skipped
+                    tracker.mark_finished(dt.value, collected, skipped)
+                except Exception as exc:
+                    tracker.mark_failed(dt.value, str(exc))
+                    click.echo(f"  ERROR {dt.value}: {exc}", err=True)
                 finally:
                     logging.getLogger().removeHandler(file_handler)
                     file_handler.close()
+                tracker.print_status_line()
 
-            return grand_collected, grand_skipped
+        asyncio.run(_run_sequential())
 
-        total_collected, total_skipped = asyncio.run(_run_sequential())
-
+    # Print summary
+    total_c = sum(r.collected for r in tracker.results.values())
+    total_s = sum(r.skipped for r in tracker.results.values())
+    failed_types = [r for r in tracker.results.values() if r.status == "failed"]
     click.echo(
-        f"\nTotal: {total_collected} collected, {total_skipped} skipped "
+        f"\nCollection complete in {tracker.elapsed()}: "
+        f"{total_c} collected, {total_s} skipped "
         f"across {len(plan)} document types"
     )
+    if failed_types:
+        click.echo("\nFailures:")
+        for r in failed_types:
+            click.echo(f"  {r.doc_type} ({r.source}): {r.error}")
+
+    # Auto-generate a report
+    from juris.report import generate_report, save_report
+
+    rpt = generate_report(data_dir)
+    report_path = save_report(rpt, data_dir)
+    click.echo(
+        f"\nReport: {rpt.total_documents} documents across "
+        f"{rpt.total_doc_types} types (saved to {report_path})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# report command group
+# ---------------------------------------------------------------------------
+
+
+def _display_report(rpt: CollectionReport) -> None:
+    """Print a human-readable report to the terminal."""
+    click.echo(f"Collection Report ({rpt.generated_at})")
+    click.echo(f"Total: {rpt.total_documents:,} documents across {rpt.total_doc_types} doc types\n")
+
+    hdr = f"  {'Type':<14s} {'Source':<12s} {'On disk':>8s}  {'Date range':<23s} {'Last run':<12s}"
+    click.echo(hdr)
+    click.echo(f"  {'─' * 73}")
+
+    empty_types: list[str] = []
+    for s in rpt.doc_types:
+        if s.date_min and s.date_max:
+            dr = f"{s.date_min} – {s.date_max}"
+        else:
+            dr = "—"
+        last_run = s.last_run_at[:10] if s.last_run_at else "—"
+        mark = "  <- empty" if s.on_disk == 0 else ""
+        click.echo(
+            f"  {s.doc_type:<14s} {s.source:<12s} {s.on_disk:>8,}  {dr:<23s} {last_run:<12s}{mark}"
+        )
+        if s.on_disk == 0:
+            empty_types.append(s.doc_type)
+
+    click.echo(f"  {'─' * 73}")
+    click.echo(f"  {'Total':<14s} {'':12s} {rpt.total_documents:>8,}")
+
+    # Coverage by year
+    has_coverage = any(s.by_year for s in rpt.doc_types)
+    if has_coverage:
+        click.echo("\nCoverage by year:")
+        for s in rpt.doc_types:
+            if not s.by_year:
+                click.echo(f"  {s.doc_type}: (none)")
+                continue
+            click.echo(f"  {s.doc_type} ({s.on_disk:,} docs):")
+            parts: list[str] = []
+            for yr in sorted(s.by_year):
+                cnt = s.by_year[yr]
+                pct = s.by_year_pct.get(yr, 0.0)
+                parts.append(f"{yr}: {cnt:>4} ({pct:.1f}%)")
+            # Print in rows of 5 entries
+            for i in range(0, len(parts), 5):
+                chunk = "  ".join(parts[i : i + 5])
+                click.echo(f"    {chunk}")
+
+    if empty_types:
+        click.echo(f"\nGaps (no documents on disk): {', '.join(empty_types)}")
+
+
+def _display_diff(diff: ReportDiff) -> None:
+    """Print a human-readable diff between two reports."""
+    click.echo(
+        f"Comparing {diff.before_id[:8]} "
+        f"({diff.before_generated_at[:10]}) → current "
+        f"({diff.after_generated_at[:10]}):\n"
+    )
+    hdr = f"  {'Type':<14s} {'Before':>8s}  {'After':>8s}  {'Delta':>8s}"
+    click.echo(hdr)
+    click.echo(f"  {'─' * 42}")
+
+    for d in diff.doc_types:
+        sign = "+" if d.delta > 0 else ""
+        click.echo(
+            f"  {d.doc_type:<14s} {d.on_disk_before:>8,}"
+            f"  {d.on_disk_after:>8,}  {sign}{d.delta:>7,}"
+        )
+
+    click.echo(f"  {'─' * 42}")
+    sign = "+" if diff.total_delta > 0 else ""
+    click.echo(
+        f"  {'Total':<14s} {diff.total_before:>8,}"
+        f"  {diff.total_after:>8,}  {sign}{diff.total_delta:>7,}"
+    )
+
+
+@main.group(invoke_without_command=True)
+@click.option("--json", "output_json", is_flag=True, help="Output raw JSON to stdout.")
+@click.pass_context
+def report(ctx: click.Context, output_json: bool) -> None:
+    """Generate or view collection coverage reports."""
+    ctx.ensure_object(dict)
+    ctx.obj["output_json"] = output_json
+    if ctx.invoked_subcommand is not None:
+        return
+    # Default: generate a new report
+    data_dir: Path = ctx.obj["data_dir"]
+
+    from juris.report import generate_report, save_report
+
+    rpt = generate_report(data_dir)
+    save_report(rpt, data_dir)
+
+    if output_json:
+        click.echo(json.dumps(rpt.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        _display_report(rpt)
+
+
+@report.command("list")
+@click.pass_context
+def report_list(ctx: click.Context) -> None:
+    """List historical reports."""
+    data_dir: Path = ctx.obj["data_dir"]
+
+    from juris.report import list_reports
+
+    entries = list_reports(data_dir)
+    if not entries:
+        click.echo("No reports found. Run 'juris report' to generate one.")
+        return
+
+    click.echo(f"  {'ID':<10s} {'Generated':18s} {'Documents':>10s}")
+    click.echo(f"  {'─' * 40}")
+    for e in entries:
+        click.echo(f"  {e.id[:8]:<10s} {e.generated_at[:16]:18s} {e.total_documents:>10,}")
+
+
+@report.command("show")
+@click.argument("report_id")
+@click.pass_context
+def report_show(ctx: click.Context, report_id: str) -> None:
+    """Display a specific historical report."""
+    data_dir: Path = ctx.obj["data_dir"]
+    output_json: bool = ctx.obj.get("output_json", False)
+
+    from juris.report import load_report
+
+    rpt = load_report(report_id, data_dir)
+    if not rpt:
+        raise click.UsageError(f"Report '{report_id}' not found (or ambiguous prefix).")
+
+    if output_json:
+        click.echo(json.dumps(rpt.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    else:
+        _display_report(rpt)
+
+
+@report.command("diff")
+@click.argument("report_id")
+@click.pass_context
+def report_diff(ctx: click.Context, report_id: str) -> None:
+    """Compare current state to a historical report."""
+    data_dir: Path = ctx.obj["data_dir"]
+
+    from juris.report import diff_reports, generate_report, load_report
+
+    old = load_report(report_id, data_dir)
+    if not old:
+        raise click.UsageError(f"Report '{report_id}' not found (or ambiguous prefix).")
+
+    current = generate_report(data_dir)
+    result = diff_reports(old, current)
+    _display_diff(result)
 
 
 @main.command()

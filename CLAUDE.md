@@ -8,9 +8,10 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, search, status, stats, logs, man, --help-agent)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, report, search, status, stats, logs, man, --help-agent)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
+├── report.py           # Collection coverage reports (generate, save, load, diff; .reports/ directory)
 ├── logging.py          # Collection run logging (JSONL per-document log + text file log)
 ├── search.py           # Document search (local + provider-based, search_local, search_all)
 ├── storage.py          # Dual-format file storage (JSON + Markdown with YAML frontmatter)
@@ -38,6 +39,7 @@ tests/
 ├── test_search.py      # Search functionality tests
 ├── test_validate.py    # Document validation tests
 ├── test_logging.py     # Collection logging tests
+├── test_report.py      # Report generation, persistence, diff, and CLI tests
 └── test_help_agent.py  # --help-agent flag tests
 docs/
 ├── overview.md         # Project overview and use cases
@@ -150,3 +152,4 @@ The release pipeline (`release.yml`) then:
 - When the project structure changes (new files, directories, or significant reorganization), update this CLAUDE.md file to reflect the changes.
 - Output format: documents are stored as `data/{doc_type}/{session}/{id}.{json|md}`
 - Collection state is tracked in `.state/{source}_{doc_type}.json`
+- Coverage reports are stored in `.reports/{timestamp}.json` with an index at `.reports/index.json`
