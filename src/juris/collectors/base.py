@@ -208,7 +208,15 @@ class BaseCollector(ABC):
     # ------------------------------------------------------------------
 
     async def _download_file(self, url: str, dest: Path, limiter: RateLimiter) -> bool:
-        """Download a file via streaming with retry. Returns True on success."""
+        """Download a file via streaming with retry. Returns True on success.
+
+        Writes to a temporary file first and atomically renames on
+        completion so that an interrupted download never leaves a
+        partial file at *dest*.
+        """
+        import os
+        import tempfile
+
         client = await self._get_client()
         last_exc: Exception | None = None
 
@@ -229,9 +237,18 @@ class BaseCollector(ABC):
                             await asyncio.sleep(delay)
                             continue
                     resp.raise_for_status()
-                    with open(dest, "wb") as f:
-                        async for chunk in resp.aiter_bytes(chunk_size=65536):
-                            f.write(chunk)
+                    fd, tmp = tempfile.mkstemp(dir=dest.parent, suffix=".tmp")
+                    try:
+                        with os.fdopen(fd, "wb") as f:
+                            async for chunk in resp.aiter_bytes(chunk_size=65536):
+                                f.write(chunk)
+                        os.replace(tmp, dest)
+                    except BaseException:
+                        try:
+                            os.unlink(tmp)
+                        except OSError:
+                            pass
+                        raise
                 return True
             except (httpx.TimeoutException, httpx.ConnectError) as e:
                 last_exc = e

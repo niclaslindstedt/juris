@@ -7,6 +7,7 @@ import re
 import time
 import warnings
 from datetime import date
+from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag, XMLParsedAsHTMLWarning
 
@@ -154,3 +155,50 @@ def sanitize_filename(doc_id: str) -> str:
         "foreskrift-2023:AFS 2023:1" -> "foreskrift-2023_AFS-2023_1"
     """
     return doc_id.replace("/", "-").replace(":", "_").replace(" ", "-")
+
+
+def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
+    """Write text to *path* atomically via a temp file + os.replace.
+
+    Ensures that an interrupted write (e.g. Ctrl+C) never leaves a
+    partially written file at *path*.
+    """
+    import os
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        # Clean up temp file on any failure (including KeyboardInterrupt)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write bytes to *path* atomically via a temp file + os.replace."""
+    import os
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
