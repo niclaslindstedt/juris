@@ -145,7 +145,9 @@ The release pipeline (`release.yml`) then:
 - Publishes the package to PyPI
 - Creates a GitHub Release with release notes
 
-**Required secret**: `PYPI_TOKEN` must be configured in the `pypi-registry` GitHub environment.
+**Required secrets**:
+- `PYPI_TOKEN` must be configured in the `pypi-registry` GitHub environment.
+- `RELEASE_TOKEN` — a GitHub Personal Access Token (PAT) with `contents: write` and `workflows` permissions, configured as a repository secret. Required for pushing tags that trigger release workflows and for pushing to protected branches.
 
 ## Important Notes
 
