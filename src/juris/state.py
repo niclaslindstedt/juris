@@ -19,6 +19,7 @@ class CollectionState(BaseModel):
     last_fetched_date: str | None = None  # ISO date of newest doc seen
     last_page: int = 0
     total_collected: int = 0
+    total_available: int | None = None  # API-reported total matching documents
     last_run_at: str | None = None  # ISO datetime
 
 

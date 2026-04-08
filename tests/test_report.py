@@ -11,9 +11,7 @@ from click.testing import CliRunner
 from juris.cli import main
 from juris.report import (
     CollectionReport,
-    DocTypeDiff,
     DocTypeStats,
-    ReportDiff,
     ReportIndex,
     ReportIndexEntry,
     diff_reports,
@@ -22,7 +20,6 @@ from juris.report import (
     load_report,
     save_report,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,6 +55,7 @@ def _write_state(
     doc_type: str,
     *,
     total_collected: int = 0,
+    total_available: int | None = None,
     last_fetched_date: str | None = None,
     last_run_at: str | None = None,
 ) -> None:
@@ -65,19 +63,17 @@ def _write_state(
     state_dir = data_dir / ".state"
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / f"{source}_{doc_type}.json"
-    path.write_text(
-        json.dumps(
-            {
-                "source": source,
-                "doc_type": doc_type,
-                "total_collected": total_collected,
-                "last_fetched_date": last_fetched_date,
-                "last_run_at": last_run_at,
-                "last_page": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
+    state_data: dict[str, object] = {
+        "source": source,
+        "doc_type": doc_type,
+        "total_collected": total_collected,
+        "last_fetched_date": last_fetched_date,
+        "last_run_at": last_run_at,
+        "last_page": 0,
+    }
+    if total_available is not None:
+        state_data["total_available"] = total_available
+    path.write_text(json.dumps(state_data), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +171,41 @@ class TestGenerateReport:
         assert prop.total_collected == 10
         assert prop.last_fetched_date == "2024-01-15"
         assert prop.last_run_at == "2026-04-01T10:00:00"
+
+    def test_total_available_in_report(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        _write_doc(data_dir, "prop", "prop-1", "2024-01-15")
+        _write_state(
+            data_dir,
+            "riksdagen",
+            "prop",
+            total_collected=10,
+            total_available=15432,
+            last_fetched_date="2024-01-15",
+        )
+
+        rpt = generate_report(data_dir)
+        prop = next(s for s in rpt.doc_types if s.doc_type == "prop")
+        assert prop.total_available == 15432
+
+    def test_total_available_none_without_state(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        _write_doc(data_dir, "prop", "prop-1", "2024-01-15")
+
+        rpt = generate_report(data_dir)
+        prop = next(s for s in rpt.doc_types if s.doc_type == "prop")
+        assert prop.total_available is None
+
+    def test_backward_compat_state_without_total_available(self, tmp_path: Path) -> None:
+        """Old state files without total_available should deserialize cleanly."""
+        data_dir = tmp_path / "data"
+        _write_doc(data_dir, "prop", "prop-1", "2024-01-15")
+        # Write state without total_available field
+        _write_state(data_dir, "riksdagen", "prop", total_collected=5)
+
+        rpt = generate_report(data_dir)
+        prop = next(s for s in rpt.doc_types if s.doc_type == "prop")
+        assert prop.total_available is None
 
     def test_multiple_types(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
@@ -362,9 +393,7 @@ class TestReportCli:
 
         runner = CliRunner()
         # Generate a report
-        runner.invoke(
-            main, ["--data-dir", str(data_dir), "report"], catch_exceptions=False
-        )
+        runner.invoke(main, ["--data-dir", str(data_dir), "report"], catch_exceptions=False)
         # List it
         result = runner.invoke(
             main, ["--data-dir", str(data_dir), "report", "list"], catch_exceptions=False

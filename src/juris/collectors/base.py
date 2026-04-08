@@ -85,6 +85,7 @@ class BaseCollector(ABC):
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._backoff_factor = backoff_factor
+        self.total_available: int | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Return the HTTP client (creating it if needed)."""

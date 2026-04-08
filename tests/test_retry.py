@@ -85,9 +85,7 @@ async def test_fetch_with_retry_retries_on_timeout() -> None:
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.is_closed = False
-    mock_client.request = AsyncMock(
-        side_effect=[httpx.ReadTimeout("timeout"), ok_response]
-    )
+    mock_client.request = AsyncMock(side_effect=[httpx.ReadTimeout("timeout"), ok_response])
     collector._client = mock_client
 
     resp = await collector._fetch_with_retry("GET", "https://example.com")
@@ -145,9 +143,7 @@ async def test_fetch_with_retry_non_retryable_error() -> None:
     not_found = MagicMock(spec=httpx.Response)
     not_found.status_code = 404
     not_found.raise_for_status = MagicMock(
-        side_effect=httpx.HTTPStatusError(
-            "Not Found", request=MagicMock(), response=not_found
-        )
+        side_effect=httpx.HTTPStatusError("Not Found", request=MagicMock(), response=not_found)
     )
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
@@ -159,4 +155,108 @@ async def test_fetch_with_retry_non_retryable_error() -> None:
         await collector._fetch_with_retry("GET", "https://example.com")
 
     assert mock_client.request.call_count == 1
+    await collector.close()
+
+
+# ---------------------------------------------------------------------------
+# RiksdagenCollector._fetch_json integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_riksdagen_fetch_json_retries_on_503() -> None:
+    """RiksdagenCollector._fetch_json should retry via _fetch_with_retry."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 2
+    collector._backoff_base = 0.01
+
+    error_response = MagicMock(spec=httpx.Response)
+    error_response.status_code = 503
+    error_response.headers = {}
+
+    ok_response = MagicMock(spec=httpx.Response)
+    ok_response.status_code = 200
+    ok_response.raise_for_status = MagicMock()
+    ok_response.json = MagicMock(return_value={"dokumentlista": {}})
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=[error_response, ok_response])
+    collector._client = mock_client
+
+    result = await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?doktyp=prop")
+    assert result == {"dokumentlista": {}}
+    assert mock_client.request.call_count == 2
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_riksdagen_fetch_json_returns_none_on_permanent_failure() -> None:
+    """RiksdagenCollector._fetch_json returns None after retries exhausted."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 1
+    collector._backoff_base = 0.01
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+    collector._client = mock_client
+
+    result = await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?doktyp=prop")
+    assert result is None
+    assert mock_client.request.call_count == 2  # initial + 1 retry
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_riksdagen_collect_captures_traffar() -> None:
+    """RiksdagenCollector.collect should capture @traffar as total_available."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    api_response = MagicMock(spec=httpx.Response)
+    api_response.status_code = 200
+    api_response.raise_for_status = MagicMock()
+    api_response.json = MagicMock(
+        return_value={
+            "dokumentlista": {
+                "@traffar": "15432",
+                "dokument": [
+                    {
+                        "dok_id": "H203AU1",
+                        "doktyp": "prop",
+                        "beteckning": "1",
+                        "rm": "2024/25",
+                        "titel": "Test proposition",
+                        "datum": "2025-01-15",
+                    }
+                ],
+            }
+        }
+    )
+
+    # Second call for document HTML — return empty
+    html_response = MagicMock(spec=httpx.Response)
+    html_response.status_code = 200
+    html_response.raise_for_status = MagicMock()
+    html_response.json = MagicMock(return_value={"dokumentstatus": {"dokument": {"html": None}}})
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=[api_response, html_response])
+    collector._client = mock_client
+
+    docs = []
+    async for doc in collector.collect(DocType.PROP, limit=1):
+        docs.append(doc)
+
+    assert collector.total_available == 15432
+    assert len(docs) == 1
     await collector.close()
