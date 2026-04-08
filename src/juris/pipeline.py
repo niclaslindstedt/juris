@@ -108,12 +108,13 @@ async def collect_from_source(
                 if progress and hasattr(progress, "end_document"):
                     progress.end_document(doc.doc_id, path)
     finally:
+        # Always persist state so that a re-run can skip already-collected
+        # documents — even after Ctrl+C or an API failure mid-collection.
+        if collector.total_available is not None:
+            state.total_available = collector.total_available
+        save_state(state, data_dir)
         if progress:
             progress.on_finish()
         await collector.close()
 
-    if collector.total_available is not None:
-        state.total_available = collector.total_available
-
-    save_state(state, data_dir)
     return collected, skipped

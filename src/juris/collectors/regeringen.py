@@ -50,6 +50,12 @@ _DESIGNATION_PATTERNS: dict[DocType, list[re.Pattern[str]]] = {
     ],
 }
 
+# Department reference numbers (e.g., "Fi2026/00780", "Ju2025/01234").
+# Used as fallback designation when formal Ds/LAGR numbers are absent
+# (common for promemorior and lagrådsremisser).
+# Group 1 = department+year, Group 2 = number.
+_DEPT_REF_PATTERN = re.compile(r"\b([A-ZÅÄÖa-zåäö]{1,5}\d{4})/(\d{3,6})\b")
+
 PAGE_SIZE = 20  # Regeringen.se shows 20 results per page
 
 
@@ -64,6 +70,21 @@ def _parse_designation(text: str, doc_type: DocType) -> tuple[str, str | None]:
         m = pattern.search(text)
         if m:
             return m.group(2), m.group(1)
+    return "", None
+
+
+def _parse_dept_ref(text: str) -> tuple[str, str | None]:
+    """Extract a department reference like 'Fi2026/00780' as (designation, session).
+
+    Returns ("Fi2026/00780", "2026") or ("", None) if no match.
+    """
+    m = _DEPT_REF_PATTERN.search(text)
+    if m:
+        full_ref = f"{m.group(1)}/{m.group(2)}"
+        # Extract year from the reference (e.g., "2026" from "Fi2026")
+        year_match = re.search(r"\d{4}", m.group(1))
+        session = year_match.group() if year_match else None
+        return full_ref, session
     return "", None
 
 
@@ -174,8 +195,19 @@ class RegeringenCollector(BaseCollector):
             # Try extracting from the URL slug (e.g. "/ds-20266/")
             designation, session = _parse_designation(page_url, doc_type)
         if not designation:
-            logger.warning("Could not parse designation from %s", page_url)
-            # Use URL slug as a fallback designation
+            # Try department reference number (e.g., "Fi2026/00780") from page text
+            designation, session = _parse_dept_ref(page_text)
+        if not designation:
+            # Try department reference from H1 (often appended to title)
+            if h1:
+                designation, session = _parse_dept_ref(h1.get_text())
+        if not designation:
+            # LAGR pages typically lack formal designations — use slug silently.
+            # For other types, warn since a designation should normally exist.
+            if doc_type != DocType.LAGR:
+                logger.warning("Could not parse designation from %s", page_url)
+            else:
+                logger.debug("No formal designation for lagrådsremiss, using slug: %s", page_url)
             slug = page_url.rstrip("/").rsplit("/", 1)[-1]
             designation = slug
 

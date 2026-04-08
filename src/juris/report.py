@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from juris.collectors.base import get_preferred_providers
 from juris.models import DocType
 from juris.state import CollectionState, load_all_states
+from juris.utils import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -213,9 +214,9 @@ def save_report(report: CollectionReport, data_dir: Path) -> Path:
     reports = _reports_dir(data_dir)
     ts = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%S")
     report_path = reports / f"{ts}.json"
-    report_path.write_text(
+    atomic_write_text(
+        report_path,
         json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
 
     # Update index
@@ -242,9 +243,9 @@ def _load_index(data_dir: Path) -> ReportIndex:
 
 def _save_index(index: ReportIndex, data_dir: Path) -> None:
     path = _index_path(data_dir)
-    path.write_text(
+    atomic_write_text(
+        path,
         json.dumps(index.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
 
 

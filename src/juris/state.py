@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from juris.models import DocType, Source
+from juris.utils import atomic_write_text
 
 
 class CollectionState(BaseModel):
@@ -58,7 +59,4 @@ def save_state(state: CollectionState, base_dir: Path) -> None:
     """Persist collection state to disk."""
     state.last_run_at = datetime.now(tz=UTC).isoformat()
     path = _state_path(base_dir, state.source, state.doc_type)
-    path.write_text(
-        json.dumps(state.model_dump(), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_text(path, json.dumps(state.model_dump(), ensure_ascii=False, indent=2) + "\n")

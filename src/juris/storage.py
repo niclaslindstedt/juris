@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from juris.models import DocType, Document
-from juris.utils import sanitize_filename
+from juris.utils import atomic_write_text, sanitize_filename
 
 # Human-readable Swedish labels for document types (used in Markdown output)
 _TYPE_LABELS: dict[DocType, str] = {
@@ -57,11 +57,9 @@ def save_document(doc: Document, base_dir: Path) -> Path:
     """Save a document as both JSON and Markdown. Returns the JSON path."""
     json_path = _doc_path(base_dir, doc, "json")
     md_path = _doc_path(base_dir, doc, "md")
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-
     # JSON — full model dump
     data = doc.model_dump(mode="json")
-    json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(json_path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
     # Markdown — YAML frontmatter + text body
     frontmatter: dict[str, str | int] = {
@@ -106,7 +104,7 @@ def save_document(doc: Document, base_dir: Path) -> Path:
         body,
         "",
     ]
-    md_path.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write_text(md_path, "\n".join(lines))
 
     return json_path
 

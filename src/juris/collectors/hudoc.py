@@ -11,7 +11,7 @@ import httpx
 
 from juris.collectors.base import BaseCollector
 from juris.models import DocType, Document, SearchResult, Source
-from juris.utils import build_doc_id, html_to_text
+from juris.utils import build_doc_id
 
 logger = logging.getLogger(__name__)
 
@@ -91,20 +91,23 @@ class HudocCollector(BaseCollector):
         docname = columns.get("docname", "")
         appno = columns.get("appno", "")
         judgment_date_str = columns.get("judgmentdate", "")
+        kp_date_str = columns.get("kpdate", "")
         conclusion = columns.get("conclusion", "")
         article = columns.get("article", "")
 
-        # Parse judgment date (format: "2023-01-15T00:00:00" or similar)
+        # Parse judgment date (format: "2023-01-15T00:00:00" or similar).
+        # Fall back to kpdate (publication date) when judgmentdate is absent.
+        date_str = judgment_date_str or kp_date_str
         try:
-            if judgment_date_str:
-                doc_date = date.fromisoformat(judgment_date_str[:10])
+            if date_str:
+                doc_date = date.fromisoformat(date_str[:10])
             else:
-                logger.warning("No judgment date for %s, using today", item_id)
+                logger.warning("No judgment or publication date for %s, using today", item_id)
                 doc_date = date.today()
         except ValueError:
             logger.warning(
                 "Could not parse date '%s' for %s, using today",
-                judgment_date_str,
+                date_str,
                 item_id,
             )
             doc_date = date.today()
@@ -158,25 +161,7 @@ class HudocCollector(BaseCollector):
         """
         client = await self._get_client()
 
-        # Strategy 1: Try language-specific HTML endpoints (Swedish, English, French)
-        for lang_code in ("SWE", "ENG", "FRE"):
-            await self._limiter.wait()
-            html_url = f"https://hudoc.echr.coe.int/app/conversion/docx/html/body/{item_id}"
-            try:
-                resp = await client.get(
-                    html_url,
-                    params={"language": lang_code},
-                )
-                if resp.status_code == 200 and len(resp.text) > 200:
-                    raw_html = resp.text
-                    text = html_to_text(raw_html)
-                    if lang_code == "SWE":
-                        logger.info("Found Swedish text for %s", item_id)
-                    return text, raw_html
-            except httpx.HTTPError:
-                continue
-
-        # Strategy 2: PDF conversion endpoint
+        # PDF conversion endpoint (the HTML conversion endpoint is no longer available)
         await self._limiter.wait()
         pdf_url = f"https://hudoc.echr.coe.int/app/conversion/pdf/?library=ECHR&id={item_id}"
         try:
