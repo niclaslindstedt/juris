@@ -37,6 +37,22 @@ def load_state(base_dir: Path, source: Source, doc_type: DocType) -> CollectionS
     return CollectionState(source=source, doc_type=doc_type)
 
 
+def load_all_states(base_dir: Path) -> dict[tuple[str, str], CollectionState]:
+    """Load all persisted collection states.
+
+    Returns a dict keyed by ``(source_value, doc_type_value)``.
+    """
+    state_dir = base_dir / ".state"
+    result: dict[tuple[str, str], CollectionState] = {}
+    if not state_dir.exists():
+        return result
+    for path in sorted(state_dir.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        state = CollectionState.model_validate(data)
+        result[(state.source.value, state.doc_type.value)] = state
+    return result
+
+
 def save_state(state: CollectionState, base_dir: Path) -> None:
     """Persist collection state to disk."""
     state.last_run_at = datetime.now(tz=UTC).isoformat()
