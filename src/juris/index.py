@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, date, datetime
@@ -305,7 +306,7 @@ async def update_index(
                 docs_on_page = 0
 
         phase1_ok = True
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("Interrupted — saving partial index for %s/%s", source_name, dt.value)
     except Exception as exc:
         error_msg = str(exc)
@@ -396,7 +397,7 @@ async def update_index(
                         consecutive_seen,
                     )
                     break
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             logger.info("Interrupted during front-scan — saving partial index")
             if front_doc_ids:
                 _flush_page(
