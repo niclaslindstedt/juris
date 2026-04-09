@@ -324,6 +324,7 @@ class LagrummetCollector(BaseCollector):
                             session=item["year"],
                             title=item["title"],
                             date=approx_date,
+                            department=agency.agency_name,
                             source=Source.LAGRUMMET,
                             source_url=item["url"],
                             fetched_at=datetime.now(tz=UTC),
