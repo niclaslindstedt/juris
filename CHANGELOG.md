@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.0] - 2026-04-09
+
+### Added
+
+- auto-split by year when results exceed API pagination limit (#80)
+- show total count in update progress and fix vite peer dep (#78)
+- show duplicate document count during update progress (#74)
+- make update command resumable with continuous state and page tracking (#68)
+- add elapsed time and status to update command progress (#67)
+- improve error logging for fetch failures with pagination verification (#65)
+- add --debug-agent flag and always-on debug logging (#64)
+- add `update` command to build remote document index (#62)
+
+### Fixed
+
+- prevent false completion on resume due to pagination mismatch (#79)
+- retry on RemoteProtocolError instead of failing immediately (#76)
+- retry on httpx.ReadError instead of failing immediately (#75)
+- read correct pagination parameter from API URLs (#73)
+- detect and stop pagination loop in Riksdagen API (#72)
+- show progress during resume when scanning duplicate entries (#71)
+- catch asyncio.CancelledError on Ctrl+C during update resume (#70)
+- comprehensive project review — bugs, resilience, docs, tests, CI (#69)
+
+### Changed
+
+- extract shared helpers to BaseCollector (#77)
+- adjust logging levels and improve error messages (#63)
+
+
 ## [0.2.0] - 2026-04-08
 
 ### Added
