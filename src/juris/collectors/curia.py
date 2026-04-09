@@ -114,6 +114,7 @@ class CjeuCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield CJEU judgments from the CELLAR SPARQL endpoint."""
         if doc_type != DocType.CJEU:
@@ -131,16 +132,16 @@ class CjeuCollector(BaseCollector):
         filters = build_sparql_date_filters(since, until)
         client = await self._get_client()
         count = 0
-        offset = 0
+        sparql_offset = offset
 
         while True:
             query = _CJEU_QUERY_TEMPLATE.format(
                 filters=filters,
                 limit=PAGE_SIZE,
-                offset=offset,
+                offset=sparql_offset,
             )
 
-            logger.debug("CJEU SPARQL query offset=%d", offset)
+            logger.debug("CJEU SPARQL query offset=%d", sparql_offset)
             rows = await sparql_query(client, self._limiter, query)
 
             if not rows:
@@ -172,7 +173,7 @@ class CjeuCollector(BaseCollector):
             if len(rows) < PAGE_SIZE:
                 break
 
-            offset += PAGE_SIZE
+            sparql_offset += PAGE_SIZE
 
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single CJEU judgment by CELEX number."""

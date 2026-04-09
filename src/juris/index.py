@@ -30,6 +30,18 @@ class RemoteEntry(BaseModel):
     source_url: str | None = None
 
 
+class PageRecord(BaseModel):
+    """Record of a single page/chunk fetched from the source."""
+
+    page: int  # Sequential page number (0-based)
+    fetched: int  # Items returned by the API on this page
+    indexed: int  # Items actually added to index (after dedup)
+    doc_ids: list[str]  # Doc IDs found on this page
+    first_date: str | None = None  # Date of first doc on page
+    last_date: str | None = None  # Date of last doc on page
+    phase: str = "tail"  # "tail" for main enumeration, "front" for front-scan
+
+
 class RemoteIndex(BaseModel):
     """Index of known remote documents for a source + doc_type pair."""
 
@@ -41,6 +53,8 @@ class RemoteIndex(BaseModel):
     complete: bool = True  # False if enumeration was interrupted or errored
     error: str | None = None  # Error message if enumeration failed
     updated_at: str | None = None
+    resume_offset: int = 0  # Docs yielded by collector so far (for efficient resume)
+    pages: list[PageRecord] = []  # Page-by-page audit trail
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +142,48 @@ class UpdateProgress:
     def on_status(self, message: str) -> None:
         """Called on phase transitions (e.g. 'saving index')."""
 
+    def on_page(self, page: int, fetched: int, indexed: int) -> None:
+        """Called when a page of documents is completed."""
+
+    def on_resume(self, existing_entries: int, existing_pages: int) -> None:
+        """Called when resuming from an incomplete index."""
+
+    def on_front_scan(self) -> None:
+        """Called when starting the front-scan phase."""
+
     def on_finish(self) -> None:
         """Called when enumeration ends."""
+
+
+# Default page size for batching documents into page records.
+# Matches the most common collector page size.
+_INDEX_PAGE_SIZE = 20
+
+
+def _flush_page(
+    index: RemoteIndex,
+    page_num: int,
+    page_doc_ids: list[str],
+    page_indexed: int,
+    page_dates: list[str],
+    base_dir: Path,
+    *,
+    phase: str = "tail",
+) -> None:
+    """Record a completed page and save the index to disk."""
+    if not page_doc_ids:
+        return
+    record = PageRecord(
+        page=page_num,
+        fetched=len(page_doc_ids),
+        indexed=page_indexed,
+        doc_ids=page_doc_ids,
+        first_date=page_dates[0] if page_dates else None,
+        last_date=page_dates[-1] if page_dates else None,
+        phase=phase,
+    )
+    index.pages.append(record)
+    save_index(index, base_dir)
 
 
 async def update_index(
@@ -141,25 +195,76 @@ async def update_index(
     until: date | None = None,
     limit: int | None = None,
     progress: UpdateProgress | None = None,
+    fresh: bool = False,
 ) -> RemoteIndex:
     """Enumerate remote documents and build a local index.
 
     Calls the collector with ``skip_content=True`` to enumerate documents
-    without downloading full content. Saves the resulting index to disk.
+    without downloading full content.  Saves the resulting index to disk
+    continuously after each page of results.
 
-    If enumeration completes normally, ``complete`` is ``True``.
-    If an error occurs mid-enumeration, the partial index is saved with
-    ``complete=False`` and the error message recorded.
-    If the user cancels (Ctrl+C), no index is saved.
+    **Resumable**: if a previous run was interrupted (``complete=False``),
+    the existing entries are preserved and enumeration resumes from the
+    saved offset.  After finishing the tail, a front-scan picks up any
+    new documents added since the interrupted run.
+
+    Pass ``fresh=True`` to ignore any existing incomplete index and start
+    from scratch.
 
     Returns the built :class:`RemoteIndex`.
     """
-    collector = get_collector_class(source_name)()
+    source = Source(source_name)
+
+    # ------------------------------------------------------------------
+    # Load existing index for resume (if applicable)
+    # ------------------------------------------------------------------
     entries: list[RemoteEntry] = []
     seen_ids: set[str] = set()
-    complete = True
+    pages: list[PageRecord] = []
+    resume_offset = 0
+    resuming = False
+
+    if not fresh:
+        existing = load_index(base_dir, source, dt)
+        if existing and not existing.complete:
+            entries = list(existing.entries)
+            seen_ids = {e.doc_id for e in entries}
+            pages = list(existing.pages)
+            resume_offset = existing.resume_offset
+            resuming = True
+            logger.info(
+                "Resuming %s/%s from offset %d (%d entries, %d pages)",
+                source_name,
+                dt.value,
+                resume_offset,
+                len(entries),
+                len(pages),
+            )
+            if progress:
+                progress.on_resume(len(entries), len(pages))
+
+    # ------------------------------------------------------------------
+    # Phase 1: Finish the tail (resume from offset or start fresh)
+    # ------------------------------------------------------------------
+    index = RemoteIndex(
+        source=source,
+        doc_type=dt,
+        entries=entries,
+        pages=pages,
+        resume_offset=resume_offset,
+        complete=False,
+    )
+
+    collector = get_collector_class(source_name)()
     error_msg: str | None = None
     total_reported = False
+    phase1_ok = False
+
+    page_num = len(pages)
+    page_doc_ids: list[str] = []
+    page_indexed = 0
+    page_dates: list[str] = []
+    docs_on_page = 0
 
     try:
         async for doc in collector.collect(
@@ -168,37 +273,182 @@ async def update_index(
             until=until,
             limit=limit,
             skip_content=True,
+            offset=resume_offset,
         ):
-            if doc.doc_id in seen_ids:
-                continue
-            seen_ids.add(doc.doc_id)
-            entries.append(_doc_to_entry(doc))
-            if progress:
-                if not total_reported and collector.total_available is not None:
-                    progress.on_total(collector.total_available)
-                    total_reported = True
-                progress.on_found(doc.doc_id)
+            resume_offset += 1
+            index.resume_offset = resume_offset
+            docs_on_page += 1
+
+            page_doc_ids.append(doc.doc_id)
+            page_dates.append(str(doc.date))
+
+            if doc.doc_id not in seen_ids:
+                seen_ids.add(doc.doc_id)
+                entries.append(_doc_to_entry(doc))
+                index.entries = entries
+                page_indexed += 1
+                if progress:
+                    if not total_reported and collector.total_available is not None:
+                        progress.on_total(collector.total_available)
+                        total_reported = True
+                    progress.on_found(doc.doc_id)
+
+            # Flush page record after every _INDEX_PAGE_SIZE docs
+            if docs_on_page >= _INDEX_PAGE_SIZE:
+                _flush_page(index, page_num, page_doc_ids, page_indexed, page_dates, base_dir)
+                if progress:
+                    progress.on_page(page_num, docs_on_page, page_indexed)
+                page_num += 1
+                page_doc_ids = []
+                page_indexed = 0
+                page_dates = []
+                docs_on_page = 0
+
+        phase1_ok = True
+    except KeyboardInterrupt:
+        logger.info("Interrupted — saving partial index for %s/%s", source_name, dt.value)
     except Exception as exc:
-        complete = False
         error_msg = str(exc)
         logger.exception("Error enumerating %s/%s", source_name, dt.value)
         if progress:
             progress.on_status("error")
     finally:
-        total_available = collector.total_available
+        index.total_available = collector.total_available
         await collector.close()
+
+    # Flush remaining partial page
+    if page_doc_ids:
+        _flush_page(index, page_num, page_doc_ids, page_indexed, page_dates, base_dir)
+        if progress:
+            progress.on_page(page_num, docs_on_page, page_indexed)
+
+    if not phase1_ok:
+        index.error = error_msg
+        save_index(index, base_dir)
+        if progress:
+            progress.on_finish()
+        return index
+
+    # ------------------------------------------------------------------
+    # Phase 2: Front-scan for new documents (only when resuming)
+    # ------------------------------------------------------------------
+    if resuming:
+        if progress:
+            progress.on_front_scan()
+
+        collector2 = get_collector_class(source_name)()
+        consecutive_seen = 0
+        front_page_num = 0
+        front_doc_ids: list[str] = []
+        front_indexed = 0
+        front_dates: list[str] = []
+        front_docs_on_page = 0
+
+        try:
+            async for doc in collector2.collect(
+                dt,
+                since=since,
+                until=until,
+                skip_content=True,
+            ):
+                front_docs_on_page += 1
+                front_doc_ids.append(doc.doc_id)
+                front_dates.append(str(doc.date))
+
+                if doc.doc_id in seen_ids:
+                    consecutive_seen += 1
+                else:
+                    consecutive_seen = 0
+                    seen_ids.add(doc.doc_id)
+                    entries.append(_doc_to_entry(doc))
+                    index.entries = entries
+                    front_indexed += 1
+                    if progress:
+                        progress.on_found(doc.doc_id)
+
+                # Flush page
+                if front_docs_on_page >= _INDEX_PAGE_SIZE:
+                    _flush_page(
+                        index,
+                        page_num + 1 + front_page_num,
+                        front_doc_ids,
+                        front_indexed,
+                        front_dates,
+                        base_dir,
+                        phase="front",
+                    )
+                    if progress:
+                        progress.on_page(
+                            page_num + 1 + front_page_num,
+                            front_docs_on_page,
+                            front_indexed,
+                        )
+                    front_page_num += 1
+                    front_doc_ids = []
+                    front_indexed = 0
+                    front_dates = []
+                    front_docs_on_page = 0
+
+                # Stop once we've hit a full page of known docs
+                if consecutive_seen >= _INDEX_PAGE_SIZE:
+                    logger.debug(
+                        "Front-scan: hit %d consecutive known docs, stopping",
+                        consecutive_seen,
+                    )
+                    break
+        except KeyboardInterrupt:
+            logger.info("Interrupted during front-scan — saving partial index")
+            if front_doc_ids:
+                _flush_page(
+                    index,
+                    page_num + 1 + front_page_num,
+                    front_doc_ids,
+                    front_indexed,
+                    front_dates,
+                    base_dir,
+                    phase="front",
+                )
+            index.error = "Interrupted during front-scan"
+            save_index(index, base_dir)
+            if progress:
+                progress.on_finish()
+            return index
+        except Exception as exc:
+            error_msg = str(exc)
+            logger.exception("Error during front-scan for %s/%s", source_name, dt.value)
+        finally:
+            index.total_available = collector2.total_available or index.total_available
+            await collector2.close()
+
+        # Flush remaining partial front page
+        if front_doc_ids:
+            _flush_page(
+                index,
+                page_num + 1 + front_page_num,
+                front_doc_ids,
+                front_indexed,
+                front_dates,
+                base_dir,
+                phase="front",
+            )
+
+        if error_msg:
+            index.error = error_msg
+            save_index(index, base_dir)
+            if progress:
+                progress.on_finish()
+            return index
+
+    # ------------------------------------------------------------------
+    # Done — mark complete
+    # ------------------------------------------------------------------
+    index.complete = True
+    index.error = None
+    index.resume_offset = 0
 
     if progress:
         progress.on_status("saving index")
 
-    index = RemoteIndex(
-        source=Source(source_name),
-        doc_type=dt,
-        entries=entries,
-        total_available=total_available,
-        complete=complete,
-        error=error_msg,
-    )
     save_index(index, base_dir)
 
     if progress:

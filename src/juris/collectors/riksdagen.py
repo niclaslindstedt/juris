@@ -276,6 +276,7 @@ class RiksdagenCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield documents from the Riksdagen API."""
         if doc_type not in _DOCTYPE_MAP:
@@ -287,13 +288,15 @@ class RiksdagenCollector(BaseCollector):
             rk_type = "prop"
         page_size = 20
         count = 0
+        items_to_skip = offset % page_size
 
         # Build initial URL
+        start_sida = offset // page_size + 1
         params: dict[str, str] = {
             "doktyp": rk_type,
             "utformat": "json",
             "antal": str(page_size),
-            "sida": "1",
+            "sida": str(start_sida),
             "sort": "datum",
             "sortorder": "desc",
         }
@@ -349,6 +352,11 @@ class RiksdagenCollector(BaseCollector):
             for item in documents:
                 if limit and count >= limit:
                     return
+
+                # Skip items on the first page when resuming from offset
+                if items_to_skip > 0:
+                    items_to_skip -= 1
+                    continue
 
                 dok_id = item.get("dok_id", "")
                 logger.debug("Fetching %s: %s", dok_id, item.get("titel", "")[:60])

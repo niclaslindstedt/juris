@@ -271,12 +271,14 @@ class LagrummetCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield föreskrifter from configured agency websites."""
         if doc_type != DocType.FORESKRIFT:
             raise ValueError(f"Unsupported doc type for Lagrummet: {doc_type}")
 
         count = 0
+        yielded = 0
 
         for agency in _AGENCIES.values():
             if limit and count >= limit:
@@ -320,6 +322,10 @@ class LagrummetCollector(BaseCollector):
                             continue
                         if until and approx_date > until:
                             continue
+                        # Skip items when resuming from offset
+                        if yielded < offset:
+                            yielded += 1
+                            continue
                         doc = Document(
                             doc_id=build_doc_id(DocType.FORESKRIFT, designation, item["year"]),
                             doc_type=DocType.FORESKRIFT,
@@ -334,6 +340,7 @@ class LagrummetCollector(BaseCollector):
                         )
                         yield doc
                         count += 1
+                        yielded += 1
                         continue
 
                     logger.debug("Fetching detail: %s", item["title"][:80])
@@ -351,8 +358,14 @@ class LagrummetCollector(BaseCollector):
                     if until and detail_doc.date > until:
                         continue
 
+                    # Skip items when resuming from offset
+                    if yielded < offset:
+                        yielded += 1
+                        continue
+
                     yield detail_doc
                     count += 1
+                    yielded += 1
 
                 # Stop pagination for non-paginated agencies or end of results
                 if not agency.paginated:

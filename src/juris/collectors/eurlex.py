@@ -118,6 +118,7 @@ class EurLexCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield EU regulations or directives from the CELLAR SPARQL endpoint."""
         if doc_type not in self.supported_doc_types:
@@ -137,17 +138,17 @@ class EurLexCollector(BaseCollector):
         filters = build_sparql_date_filters(since, until)
         client = await self._get_client()
         count = 0
-        offset = 0
+        sparql_offset = offset
 
         while True:
             query = _EURLEX_QUERY_TEMPLATE.format(
                 resource_type=resource_type,
                 filters=filters,
                 limit=PAGE_SIZE,
-                offset=offset,
+                offset=sparql_offset,
             )
 
-            logger.debug("EUR-Lex SPARQL query for %s offset=%d", doc_type.value, offset)
+            logger.debug("EUR-Lex SPARQL query for %s offset=%d", doc_type.value, sparql_offset)
             rows = await sparql_query(client, self._limiter, query)
 
             if not rows:
@@ -172,7 +173,7 @@ class EurLexCollector(BaseCollector):
             if len(rows) < PAGE_SIZE:
                 break
 
-            offset += PAGE_SIZE
+            sparql_offset += PAGE_SIZE
 
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single EU document by CELEX number."""
