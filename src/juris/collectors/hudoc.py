@@ -59,11 +59,10 @@ class HudocCollector(BaseCollector):
         start: int = 0,
         length: int = PAGE_SIZE,
     ) -> list[dict[str, Any]]:
-        """Execute a HUDOC search and return result items."""
-        await self._limiter.wait()
-        client = await self._get_client()
+        """Execute a HUDOC search with retry and return result items."""
         try:
-            resp = await client.get(
+            resp = await self._fetch_with_retry(
+                "GET",
                 SEARCH_URL,
                 params={
                     "query": query,
@@ -73,7 +72,6 @@ class HudocCollector(BaseCollector):
                     "length": length,
                 },
             )
-            resp.raise_for_status()
             data = resp.json()
             results: list[dict[str, Any]] = data.get("results", [])
             return results

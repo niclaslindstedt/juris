@@ -1,7 +1,6 @@
 name: mot
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

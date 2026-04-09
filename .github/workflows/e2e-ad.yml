@@ -1,7 +1,6 @@
 name: ad
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

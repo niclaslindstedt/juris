@@ -188,10 +188,19 @@ async def search_all(
     """Combined search: local + provider, deduplicated by doc_id."""
     results_by_key: dict[str, SearchResult] = {}
 
+    def _dedup_key(r: SearchResult) -> str:
+        """Build a deduplication key for a search result."""
+        if r.doc_id:
+            return r.doc_id
+        if r.source_url:
+            return r.source_url
+        # Composite fallback to avoid false dedup on bare title
+        return f"{r.source}:{r.doc_type}:{r.designation or r.title}"
+
     # Local search
     if not provider_only:
         for r in search_local(query, data_dir, doc_type=doc_type, source=source, limit=limit):
-            key = r.doc_id or r.source_url or r.title
+            key = _dedup_key(r)
             results_by_key[key] = r
 
     # Provider search
@@ -204,7 +213,7 @@ async def search_all(
             data_dir=data_dir,
         )
         for r in provider_results:
-            key = r.doc_id or r.source_url or r.title
+            key = _dedup_key(r)
             if key not in results_by_key:
                 results_by_key[key] = r
             elif not results_by_key[key].local and r.local:

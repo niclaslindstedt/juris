@@ -1,7 +1,6 @@
 name: eu_reg
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

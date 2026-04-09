@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
 from juris.models import Attachment, DocType, Document, SearchResult, Source
-from juris.utils import build_doc_id, extract_page_content
+from juris.utils import build_doc_id, extract_page_content, parse_swedish_date
 
 logger = logging.getLogger(__name__)
 
@@ -48,42 +48,11 @@ _DECISION_MAKER_RE = re.compile(
 _JK_DNR_RE = re.compile(r"Diarienr:\s*(\d{4}/\d+)")
 _JK_DATE_RE = re.compile(r"Beslutsdatum:\s*(\d{1,2}\s+\w+\s+\d{4})")
 
-# Swedish month name to number mapping
-_SV_MONTHS: dict[str, int] = {
-    "jan": 1,
-    "feb": 2,
-    "mar": 3,
-    "apr": 4,
-    "maj": 5,
-    "jun": 6,
-    "jul": 7,
-    "aug": 8,
-    "sep": 9,
-    "okt": 10,
-    "nov": 11,
-    "dec": 12,
-}
-
 # XML namespace used in sitemaps
 _SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
 # Default start year for JK decisions (site has decisions from 2000 onwards)
 _JK_DEFAULT_START = "2000-01-01"
-
-
-def _parse_swedish_date(text: str) -> date | None:
-    """Parse a Swedish date like '04 mar 2026' or '4 mar 2026'."""
-    match = re.match(r"(\d{1,2})\s+(\w+)\s+(\d{4})", text.strip())
-    if not match:
-        return None
-    day, month_str, year = match.groups()
-    month = _SV_MONTHS.get(month_str.lower())
-    if not month:
-        return None
-    try:
-        return date(int(year), month, int(day))
-    except ValueError:
-        return None
 
 
 class JoJkCollector(BaseCollector):
@@ -97,12 +66,9 @@ class JoJkCollector(BaseCollector):
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
 
     async def _fetch_html(self, url: str) -> str | None:
-        """Fetch a URL via GET and return the response text, or None on error."""
-        await self._limiter.wait()
-        client = await self._get_client()
+        """Fetch a URL via GET with retry and return the response text, or None on error."""
         try:
-            resp = await client.get(url)
-            resp.raise_for_status()
+            resp = await self._fetch_with_retry("GET", url)
             return resp.text
         except httpx.HTTPStatusError as e:
             logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
@@ -112,12 +78,9 @@ class JoJkCollector(BaseCollector):
             return None
 
     async def _post_html(self, url: str, data: dict[str, str | list[str]]) -> str | None:
-        """POST form data to a URL and return the response text, or None on error."""
-        await self._limiter.wait()
-        client = await self._get_client()
+        """POST form data with retry and return the response text, or None on error."""
         try:
-            resp = await client.post(url, data=data)
-            resp.raise_for_status()
+            resp = await self._fetch_with_retry("POST", url, data=data)
             return resp.text
         except httpx.HTTPStatusError as e:
             logger.warning("Failed to POST %s: HTTP %d", url, e.response.status_code)
@@ -301,7 +264,7 @@ class JoJkCollector(BaseCollector):
                     item["designation"] = dnr_match.group(1)
                 jk_date_match = _JK_DATE_RE.search(date_text)
                 if jk_date_match:
-                    parsed = _parse_swedish_date(jk_date_match.group(1))
+                    parsed = parse_swedish_date(jk_date_match.group(1))
                     if parsed:
                         item["date"] = parsed.isoformat()
 
@@ -442,7 +405,7 @@ class JoJkCollector(BaseCollector):
         doc_date: date | None = None
         jk_date_match = _JK_DATE_RE.search(date_text)
         if jk_date_match:
-            doc_date = _parse_swedish_date(jk_date_match.group(1))
+            doc_date = parse_swedish_date(jk_date_match.group(1))
 
         if not doc_date:
             logger.warning("Could not parse date from %s, using today", page_url)

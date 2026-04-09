@@ -128,7 +128,7 @@ Four functions provide access to the collector registry:
 mapping source names to collector classes.
 
 **`get_collector_class(source)`** — Look up a single collector class by
-source name. Returns `None` if not found.
+source name. Raises `KeyError` if not found.
 
 **`get_doc_type_providers()`** — Returns a `dict[str, list[str]]` mapping
 each document type to the list of source names that support it.

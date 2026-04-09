@@ -1,7 +1,6 @@
 name: echr
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

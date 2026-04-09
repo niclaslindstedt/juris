@@ -1,7 +1,6 @@
 name: cjeu
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

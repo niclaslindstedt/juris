@@ -112,6 +112,6 @@ juris collect riksdagen --type prop --session 2024/25 --limit 5
 juris stats
 ```
 
-See [getting-started](getting-started) for detailed setup instructions, or
+See the [README](../README.md) for detailed setup instructions, or
 jump to the [architecture](architecture) guide to understand how juris works
 under the hood.

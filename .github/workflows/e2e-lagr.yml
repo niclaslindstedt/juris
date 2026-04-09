@@ -1,7 +1,6 @@
 name: lagr
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

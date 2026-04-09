@@ -32,8 +32,13 @@ directory, organized by document type and session/year.
 | `collect` | Collect documents from a specific source. |
 | `collect-type` | Collect a document type using the best provider. |
 | `collect-all` | Collect all document types from all providers. |
+| `update` | Update the remote document index for a document type. |
+| `report` | Generate a collection coverage report. |
+| `search` | Search for documents locally and/or via providers. |
+| `validate` | Validate collected data quality. |
 | `status` | Show collection state for all sources and document types. |
 | `stats` | Count collected documents per type. |
+| `logs` | Show collection run logs. |
 | `man` | Display manual pages for juris commands. |
 
 ## SOURCES
@@ -131,4 +136,5 @@ juris stats
 ## SEE ALSO
 
 [collect](collect), [collect-type](collect-type), [collect-all](collect-all),
-[status](status), [stats](stats)
+[update](update), [report](report), [search](search), [validate](validate),
+[status](status), [stats](stats), [logs](logs)

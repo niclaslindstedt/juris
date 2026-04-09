@@ -8,7 +8,7 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, update, report, search, status, stats, logs, man, --help-agent)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, update, report, search, validate, status, stats, logs, man, --help-agent)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
 ├── report.py           # Collection coverage reports (generate, save, load, diff; .reports/ directory)
@@ -43,7 +43,9 @@ tests/
 ├── test_report.py      # Report generation, persistence, diff, and CLI tests
 ├── test_help_agent.py  # --help-agent flag tests
 ├── test_debug_agent.py # --debug-agent flag tests
-└── test_index.py       # Remote index and update command tests
+├── test_index.py       # Remote index and update command tests
+├── test_man.py         # Man command CLI tests
+└── test_storage.py     # Storage roundtrip fidelity tests
 docs/
 ├── overview.md         # Project overview and use cases
 ├── architecture.md     # System architecture and data flow

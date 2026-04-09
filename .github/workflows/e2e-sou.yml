@@ -1,7 +1,6 @@
 name: sou
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

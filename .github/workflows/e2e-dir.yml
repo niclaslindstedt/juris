@@ -1,7 +1,6 @@
 name: dir
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

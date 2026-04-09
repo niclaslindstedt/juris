@@ -17,7 +17,7 @@ the main juris(1) manual page is shown.
 
 ## ARGUMENTS
 
-- `COMMAND` — The command to show the manual page for. One of: `juris`, `collect`, `collect-type`, `collect-all`, `status`, `stats`, `man`. If omitted, defaults to `juris` (the main manual page).
+- `COMMAND` — The command to show the manual page for. One of: `juris`, `collect`, `collect-type`, `collect-all`, `update`, `report`, `search`, `validate`, `status`, `stats`, `logs`, `man`. If omitted, defaults to `juris` (the main manual page).
 
 ## EXAMPLES
 

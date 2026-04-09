@@ -36,7 +36,7 @@ _TYPE_LABELS: dict[DocType, str] = {
 }
 
 
-def _doc_dir(base_dir: Path, doc_type: DocType, session: str | None) -> Path:
+def doc_dir(base_dir: Path, doc_type: DocType, session: str | None) -> Path:
     """Derive the directory for a document type and session."""
     type_dir = base_dir / doc_type.value
     if session:
@@ -48,7 +48,7 @@ def _doc_dir(base_dir: Path, doc_type: DocType, session: str | None) -> Path:
 
 def _doc_path(base_dir: Path, doc: Document, ext: str) -> Path:
     """Full path for a document file."""
-    directory = _doc_dir(base_dir, doc.doc_type, doc.session)
+    directory = doc_dir(base_dir, doc.doc_type, doc.session)
     filename = sanitize_filename(doc.doc_id)
     return directory / f"{filename}.{ext}"
 
@@ -116,7 +116,7 @@ def load_document(
     base_dir: Path,
 ) -> Document | None:
     """Load a document from its JSON file."""
-    directory = _doc_dir(base_dir, doc_type, session)
+    directory = doc_dir(base_dir, doc_type, session)
     filename = sanitize_filename(doc_id)
     json_path = directory / f"{filename}.json"
     if not json_path.exists():
@@ -127,6 +127,6 @@ def load_document(
 
 def document_exists(doc_id: str, doc_type: DocType, session: str | None, base_dir: Path) -> bool:
     """Check if a document has already been saved."""
-    directory = _doc_dir(base_dir, doc_type, session)
+    directory = doc_dir(base_dir, doc_type, session)
     filename = sanitize_filename(doc_id)
     return (directory / f"{filename}.json").exists()

@@ -11,10 +11,10 @@ from click.testing import CliRunner
 
 from juris.cli import main
 from juris.index import (
+    _INDEX_PAGE_SIZE,
     PageRecord,
     RemoteEntry,
     RemoteIndex,
-    _INDEX_PAGE_SIZE,
     count_local,
     count_missing,
     entries_by_year,
@@ -461,9 +461,7 @@ class TestUpdateCli:
 
 class TestPageRecord:
     def test_creation(self) -> None:
-        record = PageRecord(
-            page=0, fetched=20, indexed=18, doc_ids=["a", "b"], phase="tail"
-        )
+        record = PageRecord(page=0, fetched=20, indexed=18, doc_ids=["a", "b"], phase="tail")
         assert record.page == 0
         assert record.fetched == 20
         assert record.indexed == 18
@@ -549,9 +547,7 @@ class TestRemoteIndexResumableFields:
             "total_entries": 0,
             "complete": True,
         }
-        (idx_dir / "riksdagen_prop.json").write_text(
-            json.dumps(old_data), encoding="utf-8"
-        )
+        (idx_dir / "riksdagen_prop.json").write_text(json.dumps(old_data), encoding="utf-8")
 
         loaded = load_index(data_dir, Source.RIKSDAGEN, DocType.PROP)
         assert loaded is not None
@@ -613,14 +609,12 @@ def _mock_collector(docs: list[Document], total: int | None = None) -> AsyncMock
 
 class TestUpdateIndexResume:
     @patch("juris.index.get_collector_class")
-    async def test_basic_index_with_pages(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_basic_index_with_pages(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Basic update_index creates page records."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
 
-        docs = [_make_doc(f"doc-{i}", f"2024-01-{i+1:02d}") for i in range(25)]
+        docs = [_make_doc(f"doc-{i}", f"2024-01-{i + 1:02d}") for i in range(25)]
         mock_get.return_value = _mock_collector(docs, total=25)
 
         index = await update_index("riksdagen", DocType.PROP, data_dir)
@@ -634,17 +628,14 @@ class TestUpdateIndexResume:
             assert page.phase == "tail"
 
     @patch("juris.index.get_collector_class")
-    async def test_resume_from_incomplete(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_resume_from_incomplete(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Resume from incomplete index preserves existing entries."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
 
         # Create an incomplete index with 10 entries
         existing_entries = [
-            _make_entry(doc_id=f"doc-{i}", date=f"2024-01-{i+1:02d}")
-            for i in range(10)
+            _make_entry(doc_id=f"doc-{i}", date=f"2024-01-{i + 1:02d}") for i in range(10)
         ]
         existing_pages = [
             PageRecord(
@@ -665,7 +656,7 @@ class TestUpdateIndexResume:
         save_index(incomplete, data_dir)
 
         # Provide docs starting from offset 10 (simulate remaining docs)
-        all_docs = [_make_doc(f"doc-{i}", f"2024-01-{i+1:02d}") for i in range(20)]
+        all_docs = [_make_doc(f"doc-{i}", f"2024-01-{i + 1:02d}") for i in range(20)]
         mock_get.return_value = _mock_collector(all_docs, total=20)
 
         index = await update_index("riksdagen", DocType.PROP, data_dir)
@@ -681,9 +672,7 @@ class TestUpdateIndexResume:
         data_dir.mkdir()
 
         # Existing index with doc-0 through doc-4
-        existing_entries = [
-            _make_entry(doc_id=f"doc-{i}") for i in range(5)
-        ]
+        existing_entries = [_make_entry(doc_id=f"doc-{i}") for i in range(5)]
         incomplete = RemoteIndex(
             source=Source.RIKSDAGEN,
             doc_type=DocType.PROP,
@@ -703,9 +692,7 @@ class TestUpdateIndexResume:
         assert len(index.entries) == 8
 
     @patch("juris.index.get_collector_class")
-    async def test_fresh_ignores_incomplete(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_fresh_ignores_incomplete(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """fresh=True ignores existing incomplete index."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -724,18 +711,14 @@ class TestUpdateIndexResume:
         docs = [_make_doc(f"new-{i}") for i in range(3)]
         mock_get.return_value = _mock_collector(docs, total=3)
 
-        index = await update_index(
-            "riksdagen", DocType.PROP, data_dir, fresh=True
-        )
+        index = await update_index("riksdagen", DocType.PROP, data_dir, fresh=True)
 
         assert index.complete is True
         assert len(index.entries) == 3
         assert all(e.doc_id.startswith("new-") for e in index.entries)
 
     @patch("juris.index.get_collector_class")
-    async def test_complete_index_starts_fresh(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_complete_index_starts_fresh(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Running update on a complete index starts from scratch."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -760,9 +743,7 @@ class TestUpdateIndexResume:
         assert not any(e.doc_id == "old-1" for e in index.entries)
 
     @patch("juris.index.get_collector_class")
-    async def test_error_saves_partial(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_error_saves_partial(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Error mid-enumeration saves partial index with complete=False."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -796,9 +777,7 @@ class TestUpdateIndexResume:
         assert loaded.resume_offset == 5
 
     @patch("juris.index.get_collector_class")
-    async def test_page_records_audit_trail(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_page_records_audit_trail(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Pages are recorded with doc_ids and dates."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -826,14 +805,10 @@ class TestUpdateIndexResume:
         assert len(all_page_ids) == len(docs)
 
     @patch("juris.index.get_collector_class")
-    async def test_front_scan_finds_new_docs(
-        self, mock_get: AsyncMock, tmp_path: Path
-    ) -> None:
+    async def test_front_scan_finds_new_docs(self, mock_get: AsyncMock, tmp_path: Path) -> None:
         """Front-scan detects new documents added at the front."""
         data_dir = tmp_path / "data"
         data_dir.mkdir()
-
-        page_size = _INDEX_PAGE_SIZE
 
         # Existing incomplete index with docs 10-29
         existing_entries = [
@@ -892,12 +867,8 @@ class TestUpdateIndexResume:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
 
-        page_size = _INDEX_PAGE_SIZE
-
         # Existing incomplete index with docs 0-49
-        existing_entries = [
-            _make_entry(doc_id=f"doc-{i}") for i in range(50)
-        ]
+        existing_entries = [_make_entry(doc_id=f"doc-{i}") for i in range(50)]
         incomplete = RemoteIndex(
             source=Source.RIKSDAGEN,
             doc_type=DocType.PROP,

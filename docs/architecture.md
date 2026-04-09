@@ -29,9 +29,10 @@ state tracking.
 ### cli.py — Command Line Interface
 
 The entry point for all user interaction. Built with Click, it provides
-six commands: `collect`, `collect-type`, `collect-all`, `status`, `stats`,
-and `man`. Each collection command constructs the appropriate parameters
-and delegates to the pipeline.
+eleven commands: `collect`, `collect-type`, `collect-all`, `update`,
+`report`, `search`, `validate`, `status`, `stats`, `logs`, and `man`.
+Each collection command constructs the appropriate parameters and
+delegates to the pipeline.
 
 The CLI also handles progress reporting through two reporter classes:
 `_ProgressTracker` (progress bar) for normal mode and `_VerboseReporter`
