@@ -190,6 +190,56 @@ async def update_index(
     return index
 
 
+async def update_counts(
+    source_name: str,
+    dt: DocType,
+    base_dir: Path,
+) -> RemoteIndex:
+    """Quick update: fetch only the API-reported total without enumerating.
+
+    Makes a single request (``limit=1``) to get ``total_available`` from the
+    source.  If an existing index is on disk, its entries are preserved and
+    only the ``total_available`` and ``updated_at`` fields are refreshed.
+    """
+    collector = get_collector_class(source_name)()
+
+    try:
+        # Fetch a single document to trigger the API's total count
+        async for _doc in collector.collect(dt, limit=1, skip_content=True):
+            break  # one is enough
+    except Exception:
+        logger.debug("Could not fetch counts for %s/%s", source_name, dt.value)
+    finally:
+        total_available = collector.total_available
+        await collector.close()
+
+    existing = load_index(base_dir, Source(source_name), dt)
+    if existing:
+        existing.total_available = total_available
+        save_index(existing, base_dir)
+        return existing
+
+    index = RemoteIndex(
+        source=Source(source_name),
+        doc_type=dt,
+        total_available=total_available,
+    )
+    save_index(index, base_dir)
+    return index
+
+
+def entries_by_year(index: RemoteIndex) -> dict[int, int]:
+    """Count index entries per year from their dates."""
+    counts: dict[int, int] = {}
+    for entry in index.entries:
+        try:
+            year = int(entry.date[:4])
+            counts[year] = counts.get(year, 0) + 1
+        except (ValueError, IndexError):
+            pass
+    return dict(sorted(counts.items()))
+
+
 def count_local(doc_type: DocType, base_dir: Path) -> int:
     """Count collected documents on disk for a doc type."""
     type_dir = base_dir / doc_type.value

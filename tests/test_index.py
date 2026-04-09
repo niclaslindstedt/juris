@@ -15,6 +15,7 @@ from juris.index import (
     RemoteIndex,
     count_local,
     count_missing,
+    entries_by_year,
     load_all_indexes,
     load_index,
     save_index,
@@ -223,6 +224,23 @@ class TestCounts:
         _write_doc(data_dir, "prop", "prop-2", "2024-06-20")
         assert count_local(DocType.PROP, data_dir) == 2
 
+    def test_entries_by_year(self) -> None:
+        idx = _make_index(
+            entries=[
+                _make_entry(doc_id="p1", date="2023-03-15"),
+                _make_entry(doc_id="p2", date="2023-06-20"),
+                _make_entry(doc_id="p3", date="2024-01-10"),
+                _make_entry(doc_id="p4", date="2024-09-01"),
+                _make_entry(doc_id="p5", date="2024-12-05"),
+            ],
+        )
+        by_year = entries_by_year(idx)
+        assert by_year == {2023: 2, 2024: 3}
+
+    def test_entries_by_year_empty(self) -> None:
+        idx = _make_index(entries=[])
+        assert entries_by_year(idx) == {}
+
     def test_count_missing_all_missing(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -353,3 +371,56 @@ class TestUpdateCli:
         assert result.exit_code == 0
         assert "Incomplete" in result.output
         assert "Connection timeout" in result.output
+
+    @patch("juris.cli.update_counts")
+    def test_update_counts_only(self, mock_counts: AsyncMock, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        mock_index = RemoteIndex(
+            source=Source.RIKSDAGEN,
+            doc_type=DocType.PROP,
+            total_available=15000,
+            updated_at="2026-04-09T00:00:00+00:00",
+        )
+        mock_counts.return_value = mock_index
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--data-dir", str(data_dir), "update", "--type", "prop", "--counts-only"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "Fetching counts" in result.output
+        assert "15,000" in result.output
+        mock_counts.assert_called_once()
+
+    @patch("juris.cli.update_index")
+    def test_update_shows_year_breakdown(self, mock_update: AsyncMock, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        mock_index = RemoteIndex(
+            source=Source.RIKSDAGEN,
+            doc_type=DocType.PROP,
+            entries=[
+                _make_entry(doc_id="p1", date="2023-03-15"),
+                _make_entry(doc_id="p2", date="2023-06-20"),
+                _make_entry(doc_id="p3", date="2024-01-10"),
+            ],
+            total_entries=3,
+            updated_at="2026-04-09T00:00:00+00:00",
+        )
+        mock_update.return_value = mock_index
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--data-dir", str(data_dir), "update", "--type", "prop"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "by year" in result.output
+        assert "2023" in result.output
+        assert "2024" in result.output

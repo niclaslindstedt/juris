@@ -19,7 +19,15 @@ from juris.collectors import (
     get_registry,
     get_searchable_sources,
 )
-from juris.index import RemoteIndex, UpdateProgress, count_local, count_missing, update_index
+from juris.index import (
+    RemoteIndex,
+    UpdateProgress,
+    count_local,
+    count_missing,
+    entries_by_year,
+    update_counts,
+    update_index,
+)
 from juris.logging import CollectionLogger, CompositeProgress, log_dir_path, setup_file_logging
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
@@ -775,6 +783,7 @@ def _display_update_summary(
     total_local = 0
     total_missing = 0
     incomplete: list[tuple[str, str, str]] = []
+    year_data: list[tuple[str, dict[int, int]]] = []
 
     for doc_type_val, source_name, index in results:
         remote = index.total_entries
@@ -799,6 +808,10 @@ def _display_update_summary(
             f"  {expected:>9s}  {local:>8,}  {missing:>8,}{warn}"
         )
 
+        by_year = entries_by_year(index)
+        if by_year:
+            year_data.append((doc_type_val, by_year))
+
     click.echo(f"  {'─' * 67}")
     click.echo(
         f"  {'Total':<14s} {'':12s} {total_remote:>8,}"
@@ -810,6 +823,15 @@ def _display_update_summary(
         click.echo(click.style("  Incomplete indexes (*):", fg="yellow"))
         for dt_val, src, err in incomplete:
             click.echo(f"    {dt_val} ({src}): {err}")
+
+    if year_data:
+        click.echo("\nRemote documents by year:")
+        for dt_val, by_year in year_data:
+            click.echo(f"  {dt_val} ({sum(by_year.values()):,} indexed):")
+            parts = [f"{yr}: {cnt:>4}" for yr, cnt in sorted(by_year.items())]
+            for i in range(0, len(parts), 6):
+                chunk = "  ".join(parts[i : i + 6])
+                click.echo(f"    {chunk}")
 
 
 @main.command()
@@ -831,6 +853,11 @@ def _display_update_summary(
 @click.option("--limit", default=None, type=int, help="Maximum documents to enumerate per type.")
 @click.option("--dry-run", is_flag=True, help="Show the update plan, then exit.")
 @click.option(
+    "--counts-only",
+    is_flag=True,
+    help="Quick mode: only fetch total counts, don't enumerate documents.",
+)
+@click.option(
     "--concurrent/--sequential",
     default=False,
     help="Run independent sources concurrently.",
@@ -850,6 +877,7 @@ def update(
     until: str | None,
     limit: int | None,
     dry_run: bool,
+    counts_only: bool,
     concurrent: bool,
     max_concurrency: int,
 ) -> None:
@@ -859,9 +887,13 @@ def update(
     content.  After updating, shows a summary of remote vs local counts
     so you can see what you have and what you're missing.
 
+    Use --counts-only for a fast check that only fetches total counts
+    from APIs (one request per source) without enumerating every document.
+
     \b
     Examples:
-      juris update                       # update all types
+      juris update                       # full update, all types
+      juris update --counts-only         # quick: just fetch totals
       juris update --type prop           # update only propositioner
       juris update --type nja --limit 50 # quick partial update
       juris update --dry-run             # preview the plan
@@ -904,12 +936,32 @@ def update(
         click.echo(f"\n{len(plan)} document types across {len({s for _, s in plan})} providers")
         return
 
+    results: list[tuple[str, str, RemoteIndex]] = []
+
+    if counts_only:
+        click.echo(
+            f"Fetching counts for {len(plan)} document type(s) "
+            f"from {len({s for _, s in plan})} provider(s)"
+        )
+
+        async def _run_counts() -> None:
+            for i, (dt, src_name) in enumerate(plan, 1):
+                click.echo(f"  [{i}/{len(plan)}] {dt.value} <- {src_name}", nl=False)
+                index = await update_counts(src_name, dt, data_dir)
+                if index.total_available is not None:
+                    click.echo(f"  ({index.total_available:,} available)")
+                else:
+                    click.echo("  (no count reported)")
+                results.append((dt.value, src_name, index))
+
+        asyncio.run(_run_counts())
+        _display_update_summary(results, data_dir)
+        return
+
     click.echo(
         f"Updating remote index for {len(plan)} document type(s) "
         f"from {len({s for _, s in plan})} provider(s)"
     )
-
-    results: list[tuple[str, str, RemoteIndex]] = []
 
     if concurrent:
         click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
