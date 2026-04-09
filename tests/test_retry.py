@@ -76,6 +76,31 @@ async def test_fetch_with_retry_retries_on_503() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_with_retry_retries_on_remote_protocol_error() -> None:
+    """Should retry on RemoteProtocolError then succeed."""
+    collector = DummyCollector()
+
+    ok_response = MagicMock(spec=httpx.Response)
+    ok_response.status_code = 200
+    ok_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(
+        side_effect=[
+            httpx.RemoteProtocolError("Server disconnected without sending a response."),
+            ok_response,
+        ]
+    )
+    collector._client = mock_client
+
+    resp = await collector._fetch_with_retry("GET", "https://example.com")
+    assert resp.status_code == 200
+    assert mock_client.request.call_count == 2
+    await collector.close()
+
+
+@pytest.mark.asyncio
 async def test_fetch_with_retry_retries_on_timeout() -> None:
     """Should retry on TimeoutException then succeed."""
     collector = DummyCollector()

@@ -109,6 +109,23 @@ python3 -m venv .venv
 .venv/bin/pytest tests/ --ignore=tests/test_e2e.py
 ```
 
+### Working in a worktree
+
+Git worktrees (paths containing `/worktrees/`) share no `.venv` — they only have the source tree. Use the main repo's venv with `PYTHONPATH=src` so tools pick up the worktree's modified source instead of the installed package:
+
+```bash
+# From the worktree directory:
+REPO=/Users/niclas/Source/personal/juris
+VENV=$REPO/.venv/bin
+
+PYTHONPATH=src $VENV/python -m pytest tests/ --ignore=tests/test_e2e.py   # test
+PYTHONPATH=src $VENV/python -m ruff check src/                            # lint
+PYTHONPATH=src $VENV/python -m ruff format --check src/                   # format check
+PYTHONPATH=src $VENV/python -m mypy src/                                  # typecheck
+```
+
+**Do not** run `make` targets from a worktree — they reference `.venv/bin/python` which doesn't exist there.
+
 - Line length: 100
 - Ruff rules: E, F, I, W
 - MyPy: strict mode, Python 3.11+

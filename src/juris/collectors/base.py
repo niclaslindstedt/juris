@@ -157,6 +157,7 @@ class BaseCollector(ABC):
                 httpx.TimeoutException,
                 httpx.ConnectError,
                 httpx.ReadError,
+                httpx.RemoteProtocolError,
             ) as exc:
                 last_exc = exc
                 if attempt == self._max_retries:
@@ -261,7 +262,12 @@ class BaseCollector(ABC):
                             pass
                         raise
                 return True
-            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as e:
+            except (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                httpx.ReadError,
+                httpx.RemoteProtocolError,
+            ) as e:
                 last_exc = e
                 if attempt < self._max_retries:
                     delay = self._backoff_base * (self._backoff_factor**attempt)
