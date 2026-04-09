@@ -108,8 +108,21 @@ class RiksdagenCollector(BaseCollector):
 
     @staticmethod
     def _extract_page(url: str) -> int | None:
-        """Extract the ``sida`` (page) parameter from a Riksdagen API URL."""
+        """Extract the current page number from a Riksdagen API URL.
+
+        The API uses ``p`` as the actual pagination parameter (increments per page),
+        while ``sida`` remains fixed at the starting page. For the initial URL
+        (which has ``sida`` but no ``p``), we fall back to ``sida``.
+        """
         params = parse_qs(urlparse(url).query)
+        # Prefer ``p`` — this is the real pagination cursor in @nasta_sida URLs
+        p = params.get("p")
+        if p:
+            try:
+                return int(p[0])
+            except (ValueError, IndexError):
+                pass
+        # Fall back to ``sida`` for the initial request URL
         sida = params.get("sida")
         if sida:
             try:
