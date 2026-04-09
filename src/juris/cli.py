@@ -890,7 +890,8 @@ class _UpdateTracker(UpdateProgress):
         else:
             count_str = f"{self._count:,} found"
         if self._dups:
-            count_str += f", {self._dups:,} dups"
+            total = self._count + self._dups
+            count_str += f", {self._dups:,} dups → {total:,} total"
 
         parts: list[str] = []
         if self._total is not None:
