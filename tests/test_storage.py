@@ -96,7 +96,7 @@ class TestStorageRoundtrip:
             ],
         )
 
-        json_path = save_document(doc, data_dir)
+        save_document(doc, data_dir)
         loaded = load_document(doc.doc_id, doc.doc_type, doc.session, data_dir)
         assert loaded is not None
         assert len(loaded.attachments) == 1
@@ -117,7 +117,7 @@ class TestStorageRoundtrip:
             fetched_at=datetime.now(tz=UTC),
         )
 
-        json_path = save_document(doc, data_dir)
+        save_document(doc, data_dir)
         loaded = load_document(doc.doc_id, doc.doc_type, doc.session, data_dir)
         assert loaded is not None
         assert loaded.doc_id == "echr-12345/20"
