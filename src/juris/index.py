@@ -283,15 +283,16 @@ async def update_index(
             page_doc_ids.append(doc.doc_id)
             page_dates.append(str(doc.date))
 
+            if progress and not total_reported and collector.total_available is not None:
+                progress.on_total(collector.total_available)
+                total_reported = True
+
             if doc.doc_id not in seen_ids:
                 seen_ids.add(doc.doc_id)
                 entries.append(_doc_to_entry(doc))
                 index.entries = entries
                 page_indexed += 1
                 if progress:
-                    if not total_reported and collector.total_available is not None:
-                        progress.on_total(collector.total_available)
-                        total_reported = True
                     progress.on_found(doc.doc_id)
 
             # Flush page record after every _INDEX_PAGE_SIZE docs

@@ -915,7 +915,7 @@ class _UpdateTracker(UpdateProgress):
         self._render()
 
     def on_page(self, page: int, fetched: int, indexed: int) -> None:
-        pass  # progress shown via on_found
+        self._render()  # keep display alive even when scanning known entries
 
     def on_resume(self, existing_entries: int, existing_pages: int) -> None:
         self._existing = existing_entries
