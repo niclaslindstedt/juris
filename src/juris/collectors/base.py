@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 import httpx
 
 from juris import __version__
-from juris.models import DocType, Document, SearchResult, Source
+from juris.models import Attachment, DocType, Document, SearchResult, Source
 from juris.pdf import extract_text as extract_pdf_text
 from juris.storage import doc_dir
 from juris.utils import RateLimiter
@@ -170,6 +170,116 @@ class BaseCollector(ABC):
 
         # Should not be reached, but satisfy the type checker
         raise last_exc or httpx.HTTPError("All retries exhausted")
+
+    # ------------------------------------------------------------------
+    # Convenience fetch helpers — override in subclasses for custom
+    # error handling (e.g. tracking last error, different return types).
+    # ------------------------------------------------------------------
+
+    async def _fetch_html(self, url: str) -> str | None:
+        """Fetch a URL via GET with retry and return the response text.
+
+        Returns ``None`` on any HTTP or network error.
+        """
+        try:
+            resp = await self._fetch_with_retry("GET", url)
+            return resp.text
+        except httpx.HTTPStatusError as e:
+            logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
+            return None
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
+            return None
+
+    async def _post_html(self, url: str, data: dict[str, str | list[str]]) -> str | None:
+        """POST form data with retry and return the response text.
+
+        Returns ``None`` on any HTTP or network error.
+        """
+        try:
+            resp = await self._fetch_with_retry("POST", url, data=data)
+            return resp.text
+        except httpx.HTTPStatusError as e:
+            logger.warning("Failed to POST %s: HTTP %d", url, e.response.status_code)
+            return None
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Failed to POST %s: %s", url, type(e).__name__)
+            return None
+
+    # ------------------------------------------------------------------
+    # Shared parsing helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _session_to_date_range(
+        session: str | None,
+        since: date | None,
+        until: date | None,
+    ) -> tuple[date | None, date | None]:
+        """Convert a year-string *session* to a ``(since, until)`` date range.
+
+        If *session* is a valid year and both *since* and *until* are ``None``,
+        returns ``(date(year, 1, 1), date(year, 12, 31))``.
+        Otherwise returns ``(since, until)`` unchanged.
+        """
+        if session and not since and not until:
+            try:
+                year = int(session)
+                return date(year, 1, 1), date(year, 12, 31)
+            except ValueError:
+                pass
+        return since, until
+
+    @staticmethod
+    def _extract_summary(text: str) -> str | None:
+        """Extract the first substantial paragraph from *text* as a summary.
+
+        Splits on double-newlines and returns the first paragraph longer than
+        60 characters, truncated to 500 characters.  Returns ``None`` if no
+        qualifying paragraph is found.
+        """
+        import re
+
+        for paragraph in re.split(r"\n{2,}", text):
+            stripped = paragraph.strip()
+            if len(stripped) > 60:
+                return stripped[:500]
+        return None
+
+    @staticmethod
+    def _extract_pdf_attachments(
+        soup: "BeautifulSoup",  # type: ignore[name-defined]  # noqa: F821
+        base_url: str,
+    ) -> list[Attachment]:
+        """Find PDF links in a BeautifulSoup tree and return Attachment objects.
+
+        De-duplicates by resolved URL.  Only includes links whose resolved URL
+        starts with *base_url* (to skip external document-reader services).
+        """
+        import re
+        from urllib.parse import urljoin
+
+        attachments: list[Attachment] = []
+        seen_urls: set[str] = set()
+        for pdf_link in soup.find_all("a", href=re.compile(r"\.pdf$", re.IGNORECASE)):
+            href = pdf_link["href"]
+            if not isinstance(href, str):
+                continue
+            pdf_url = urljoin(base_url, href)
+            if not pdf_url.startswith(base_url):
+                continue
+            if pdf_url in seen_urls:
+                continue
+            seen_urls.add(pdf_url)
+            filename = pdf_url.rsplit("/", 1)[-1]
+            attachments.append(
+                Attachment(
+                    filename=filename,
+                    url=pdf_url,
+                    mime_type="application/pdf",
+                )
+            )
+        return attachments
 
     @abstractmethod
     def collect(

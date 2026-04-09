@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 
@@ -120,13 +119,7 @@ class CjeuCollector(BaseCollector):
             raise ValueError(f"Unsupported doc type for CJEU: {doc_type}")
 
         # Convert session (year) to date range
-        if session and not since and not until:
-            try:
-                year = int(session)
-                since = date(year, 1, 1)
-                until = date(year, 12, 31)
-            except ValueError:
-                pass
+        since, until = self._session_to_date_range(session, since, until)
 
         filters = build_sparql_date_filters(since, until)
         count = 0
@@ -157,13 +150,8 @@ class CjeuCollector(BaseCollector):
                     text = await self._fetch_full_text(doc.designation)
                     if text:
                         doc.text = text
-                        # Extract summary from first substantial paragraph
                         if not doc.summary:
-                            for paragraph in re.split(r"\n{2,}", text):
-                                stripped = paragraph.strip()
-                                if len(stripped) > 60:
-                                    doc.summary = stripped[:500]
-                                    break
+                            doc.summary = self._extract_summary(text)
 
                 yield doc
                 count += 1

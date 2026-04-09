@@ -16,11 +16,10 @@ from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 from urllib.parse import urljoin
 
-import httpx
 from bs4 import BeautifulSoup, Tag
 
 from juris.collectors.base import BaseCollector
-from juris.models import Attachment, DocType, Document, SearchResult, Source
+from juris.models import DocType, Document, SearchResult, Source
 from juris.utils import build_doc_id, extract_page_content, parse_swedish_date
 
 logger = logging.getLogger(__name__)
@@ -64,30 +63,6 @@ class JoJkCollector(BaseCollector):
 
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
-
-    async def _fetch_html(self, url: str) -> str | None:
-        """Fetch a URL via GET with retry and return the response text, or None on error."""
-        try:
-            resp = await self._fetch_with_retry("GET", url)
-            return resp.text
-        except httpx.HTTPStatusError as e:
-            logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
-            return None
-        except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
-            return None
-
-    async def _post_html(self, url: str, data: dict[str, str | list[str]]) -> str | None:
-        """POST form data with retry and return the response text, or None on error."""
-        try:
-            resp = await self._fetch_with_retry("POST", url, data=data)
-            return resp.text
-        except httpx.HTTPStatusError as e:
-            logger.warning("Failed to POST %s: HTTP %d", url, e.response.status_code)
-            return None
-        except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to POST %s: %s", url, type(e).__name__)
-            return None
 
     # ------------------------------------------------------------------
     # JO: Sitemap-based URL discovery
@@ -335,16 +310,10 @@ class JoJkCollector(BaseCollector):
         if maker_match:
             department = maker_match.group(1).strip()
 
-        attachments = self._extract_attachments(soup, JO_BASE_URL)
+        attachments = self._extract_pdf_attachments(soup, JO_BASE_URL)
         summary_text, summary_html = extract_page_content(soup)
 
-        clean_summary: str | None = None
-        if summary_text:
-            for paragraph in re.split(r"\n{2,}", summary_text):
-                stripped = paragraph.strip()
-                if len(stripped) > 60:
-                    clean_summary = stripped[:500]
-                    break
+        clean_summary = self._extract_summary(summary_text) if summary_text else None
 
         source_id = page_url.replace(JO_BASE_URL, "")
         doc_id = build_doc_id(DocType.JO, designation, session)
@@ -426,7 +395,7 @@ class JoJkCollector(BaseCollector):
             return None
 
         # PDF attachments
-        attachments = self._extract_attachments(soup, JK_BASE_URL)
+        attachments = self._extract_pdf_attachments(soup, JK_BASE_URL)
 
         # Extract text content: everything in the content div after the date and title.
         # Remove date div and actions div before extracting, clone to avoid mutating soup.
@@ -456,13 +425,7 @@ class JoJkCollector(BaseCollector):
         summary_text = "\n\n".join(text_parts) if text_parts else None
         summary_html = "\n".join(html_parts) if html_parts else None
 
-        # Build a clean summary from the first substantial paragraph
-        clean_summary: str | None = None
-        if summary_text:
-            for paragraph in text_parts:
-                if len(paragraph) > 60:
-                    clean_summary = paragraph[:500]
-                    break
+        clean_summary = self._extract_summary(summary_text) if summary_text else None
 
         source_id = page_url.replace(JK_BASE_URL, "")
         doc_id = build_doc_id(DocType.JK, designation, session)
@@ -484,36 +447,6 @@ class JoJkCollector(BaseCollector):
             fetched_at=datetime.now(tz=UTC),
             attachments=attachments,
         )
-
-    # ------------------------------------------------------------------
-    # Shared helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_attachments(soup: BeautifulSoup, base_url: str) -> list[Attachment]:
-        """Find PDF links on the page."""
-        attachments: list[Attachment] = []
-        seen_urls: set[str] = set()
-        for pdf_link in soup.find_all("a", href=re.compile(r"\.pdf$", re.IGNORECASE)):
-            href = pdf_link["href"]
-            if not isinstance(href, str):
-                continue
-            pdf_url = urljoin(base_url, href)
-            # Skip external URLs (e.g. docreader services)
-            if not pdf_url.startswith(base_url):
-                continue
-            if pdf_url in seen_urls:
-                continue
-            seen_urls.add(pdf_url)
-            filename = pdf_url.rsplit("/", 1)[-1]
-            attachments.append(
-                Attachment(
-                    filename=filename,
-                    url=pdf_url,
-                    mime_type="application/pdf",
-                )
-            )
-        return attachments
 
     # ------------------------------------------------------------------
     # Public interface

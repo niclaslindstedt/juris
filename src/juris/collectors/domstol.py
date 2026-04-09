@@ -298,13 +298,7 @@ class DomstolCollector(BaseCollector):
             raise ValueError(f"Unsupported doc type for Domstol: {doc_type}")
 
         # If session is a year like "2025", convert to date range
-        if session and not since and not until:
-            try:
-                year = int(session)
-                since = date(year, 1, 1)
-                until = date(year, 12, 31)
-            except ValueError:
-                pass
+        since, until = self._session_to_date_range(session, since, until)
 
         count = 0
         page = offset // PAGE_SIZE
