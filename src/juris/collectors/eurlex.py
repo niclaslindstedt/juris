@@ -126,13 +126,7 @@ class EurLexCollector(BaseCollector):
         resource_type = _RESOURCE_TYPES[doc_type]
 
         # Convert session (year) to date range
-        if session and not since and not until:
-            try:
-                year = int(session)
-                since = date(year, 1, 1)
-                until = date(year, 12, 31)
-            except ValueError:
-                pass
+        since, until = self._session_to_date_range(session, since, until)
 
         filters = build_sparql_date_filters(since, until)
         count = 0

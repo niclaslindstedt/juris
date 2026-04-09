@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from urllib.parse import urljoin
 
-import httpx
 from bs4 import BeautifulSoup
 
 from juris.collectors.base import BaseCollector
@@ -88,18 +87,6 @@ class LagrummetCollector(BaseCollector):
 
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
-
-    async def _fetch_html(self, url: str) -> str | None:
-        """Fetch a URL with retry and return HTML text, or None on error."""
-        try:
-            resp = await self._fetch_with_retry("GET", url)
-            return resp.text
-        except httpx.HTTPStatusError as e:
-            logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
-            return None
-        except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
-            return None
 
     # ------------------------------------------------------------------
     # Listing page parsing
@@ -209,14 +196,7 @@ class LagrummetCollector(BaseCollector):
         # Extract main content
         summary_text, summary_html = extract_page_content(soup)
 
-        # Build a clean summary from the first substantial paragraph
-        clean_summary: str | None = None
-        if summary_text:
-            for paragraph in re.split(r"\n{2,}", summary_text):
-                stripped = paragraph.strip()
-                if len(stripped) > 60:
-                    clean_summary = stripped[:500]
-                    break
+        clean_summary = self._extract_summary(summary_text) if summary_text else None
 
         # PDF attachments
         attachments: list[Attachment] = []

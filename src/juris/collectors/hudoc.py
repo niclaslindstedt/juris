@@ -228,13 +228,7 @@ class HudocCollector(BaseCollector):
             raise ValueError(f"Unsupported doc type for HUDOC: {doc_type}")
 
         # Convert session (year) to date range
-        if session and not since and not until:
-            try:
-                year = int(session)
-                since = date(year, 1, 1)
-                until = date(year, 12, 31)
-            except ValueError:
-                pass
+        since, until = self._session_to_date_range(session, since, until)
 
         query = _build_query(since, until)
         count = 0
