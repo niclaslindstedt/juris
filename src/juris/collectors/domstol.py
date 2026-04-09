@@ -150,8 +150,11 @@ class DomstolCollector(BaseCollector):
             resp.raise_for_status()
             result: list[dict[str, Any]] | dict[str, Any] = resp.json()
             return result
+        except httpx.HTTPStatusError as e:
+            logger.warning("Failed to fetch %s: HTTP %d", path, e.response.status_code)
+            return None
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", path, e or type(e).__name__)
+            logger.warning("Failed to fetch %s: %s", path, type(e).__name__)
             return None
 
     # ------------------------------------------------------------------

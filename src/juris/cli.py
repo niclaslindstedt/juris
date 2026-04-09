@@ -469,6 +469,7 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
         logging.getLogger("juris.cli").setLevel(logging.INFO)
         logging.getLogger("juris.pipeline").setLevel(logging.INFO)
         logging.getLogger("juris.index").setLevel(logging.INFO)
+        logging.getLogger("juris.collectors").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING if not verbose else logging.DEBUG)
     logging.getLogger("httpcore").setLevel(logging.WARNING if not verbose else logging.DEBUG)
 
