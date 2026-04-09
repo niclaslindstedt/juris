@@ -269,6 +269,7 @@ class DomstolCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield court decisions from the Domstolsverket API."""
         if doc_type not in self.supported_doc_types:
@@ -284,7 +285,8 @@ class DomstolCollector(BaseCollector):
                 pass
 
         count = 0
-        page = 0
+        page = offset // PAGE_SIZE
+        items_to_skip = offset % PAGE_SIZE
 
         while True:
             params: dict[str, str | int] = {
@@ -302,6 +304,11 @@ class DomstolCollector(BaseCollector):
             for pub in data:
                 if limit and count >= limit:
                     return
+
+                # Skip items on the first page when resuming from offset
+                if items_to_skip > 0:
+                    items_to_skip -= 1
+                    continue
 
                 doc = self._parse_publication(pub, doc_type)
                 if not doc:

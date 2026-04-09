@@ -875,6 +875,7 @@ class _UpdateTracker(UpdateProgress):
     def __init__(self, label: str) -> None:
         self.label = label
         self._count = 0
+        self._existing = 0
         self._total: int | None = None
         self._status: str | None = None
         self._start = time.monotonic()
@@ -882,7 +883,11 @@ class _UpdateTracker(UpdateProgress):
 
     def _render(self) -> None:
         elapsed = _format_elapsed(time.monotonic() - self._start)
-        count_str = f"{self._count:,} found"
+        new = self._count - self._existing
+        if self._existing:
+            count_str = f"{self._count:,} found ({new:,} new)"
+        else:
+            count_str = f"{self._count:,} found"
 
         parts: list[str] = []
         if self._total is not None:
@@ -908,6 +913,17 @@ class _UpdateTracker(UpdateProgress):
     def on_status(self, message: str) -> None:
         self._status = message
         self._render()
+
+    def on_page(self, page: int, fetched: int, indexed: int) -> None:
+        pass  # progress shown via on_found
+
+    def on_resume(self, existing_entries: int, existing_pages: int) -> None:
+        self._existing = existing_entries
+        self._count = existing_entries
+        click.echo(f"  Resuming from {existing_entries:,} entries ({existing_pages} pages)")
+
+    def on_front_scan(self) -> None:
+        click.echo(f"\r  {self.label}: scanning for new documents...")
 
     def on_finish(self) -> None:
         click.echo()  # newline after progress
@@ -1005,6 +1021,11 @@ def _display_update_summary(
     help="Quick mode: only fetch total counts, don't enumerate documents.",
 )
 @click.option(
+    "--fresh",
+    is_flag=True,
+    help="Ignore incomplete indexes and start fresh.",
+)
+@click.option(
     "--concurrent/--sequential",
     default=False,
     help="Run independent sources concurrently.",
@@ -1025,6 +1046,7 @@ def update(
     limit: int | None,
     dry_run: bool,
     counts_only: bool,
+    fresh: bool,
     concurrent: bool,
     max_concurrency: int,
 ) -> None:
@@ -1033,6 +1055,11 @@ def update(
     Enumerates documents available on remote sources without downloading
     content.  After updating, shows a summary of remote vs local counts
     so you can see what you have and what you're missing.
+
+    The update is resumable: progress is saved continuously after each
+    page, so if interrupted (Ctrl+C or error), running update again
+    picks up where it left off.  After completing the tail, a front-scan
+    detects any new documents added since the interrupted run.
 
     Use --counts-only for a fast check that only fetches total counts
     from APIs (one request per source) without enumerating every document.
@@ -1044,6 +1071,7 @@ def update(
       juris update --type prop           # update only propositioner
       juris update --type nja --limit 50 # quick partial update
       juris update --dry-run             # preview the plan
+      juris update --fresh               # ignore partial state, start over
     """
     data_dir: Path = ctx.obj["data_dir"]
     preferred_providers = get_preferred_providers()
@@ -1128,6 +1156,7 @@ def update(
                         until=_parse_date(until),
                         limit=limit,
                         progress=tracker,
+                        fresh=fresh,
                     )
                     results.append((dt.value, src_name, index))
 
@@ -1149,6 +1178,7 @@ def update(
                     until=_parse_date(until),
                     limit=limit,
                     progress=tracker,
+                    fresh=fresh,
                 )
                 results.append((dt.value, src_name, index))
 

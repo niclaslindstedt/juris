@@ -402,6 +402,7 @@ class RegeringenCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield documents from Regeringen.se."""
         if doc_type not in _DOCTYPE_PATHS:
@@ -409,7 +410,8 @@ class RegeringenCollector(BaseCollector):
 
         path = _DOCTYPE_PATHS[doc_type]
         count = 0
-        page = 1
+        page = offset // PAGE_SIZE + 1
+        items_to_skip = offset % PAGE_SIZE
         seen_urls: set[str] = set()
 
         while True:
@@ -442,6 +444,12 @@ class RegeringenCollector(BaseCollector):
             for item in items:
                 if limit and count >= limit:
                     return
+
+                # Skip items on the first page when resuming from offset
+                if items_to_skip > 0:
+                    items_to_skip -= 1
+                    seen_urls.add(item["url"])
+                    continue
 
                 if item["url"] in seen_urls:
                     continue

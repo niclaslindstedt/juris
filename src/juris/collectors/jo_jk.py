@@ -636,6 +636,7 @@ class JoJkCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield decisions from JO or JK."""
         if doc_type not in self.supported_doc_types:
@@ -657,6 +658,7 @@ class JoJkCollector(BaseCollector):
             )
 
         count = 0
+        yielded = 0
         for item in items:
             if limit is not None and count >= limit:
                 return
@@ -674,6 +676,10 @@ class JoJkCollector(BaseCollector):
                     continue
                 if until and doc_date > until:
                     continue
+                # Skip items when resuming from offset
+                if yielded < offset:
+                    yielded += 1
+                    continue
                 source_id = item["url"].replace(JK_BASE_URL, "")
                 doc = Document(
                     doc_id=build_doc_id(DocType.JK, designation, item_session),
@@ -689,6 +695,7 @@ class JoJkCollector(BaseCollector):
                 )
                 yield doc
                 count += 1
+                yielded += 1
                 continue
 
             detail_html = await self._fetch_html(item["url"])
@@ -719,8 +726,14 @@ class JoJkCollector(BaseCollector):
             if until and detail_doc.date > until:
                 continue
 
+            # Skip items when resuming from offset
+            if yielded < offset:
+                yielded += 1
+                continue
+
             yield detail_doc
             count += 1
+            yielded += 1
 
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single decision by its relative URL path."""

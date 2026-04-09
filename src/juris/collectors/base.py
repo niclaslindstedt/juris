@@ -180,8 +180,14 @@ class BaseCollector(ABC):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
-        """Yield documents matching the given criteria."""
+        """Yield documents matching the given criteria.
+
+        When *offset* is non-zero, skip the first *offset* documents.
+        Collectors should implement this efficiently by calculating the
+        starting page from the offset.
+        """
         ...
 
     @abstractmethod

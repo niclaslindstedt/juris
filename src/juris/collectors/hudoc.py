@@ -223,6 +223,7 @@ class HudocCollector(BaseCollector):
         until: date | None = None,
         limit: int | None = None,
         skip_content: bool = False,
+        offset: int = 0,
     ) -> AsyncIterator[Document]:
         """Yield ECtHR judgments against Sweden from the HUDOC API."""
         if doc_type != DocType.ECHR:
@@ -239,7 +240,7 @@ class HudocCollector(BaseCollector):
 
         query = _build_query(since, until)
         count = 0
-        start = 0
+        start = offset
 
         seen_doc_ids: set[str] = set()
 
