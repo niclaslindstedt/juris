@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://data.riksdagen.se"
 
+# Maximum results the Riksdagen API will paginate through (~500 pages × 20).
+# Beyond this the API simply stops returning @nasta_sida links.
+_PAGINATION_LIMIT = 10_000
+
 # Swedish Riksdag standing committees — maps prefix to full Swedish name
 _COMMITTEE_MAP: dict[str, str] = {
     "AU": "Arbetsmarknadsutskottet",
@@ -293,6 +297,31 @@ class RiksdagenCollector(BaseCollector):
             attachments=attachments,
         )
 
+    async def _probe_total(self, doc_type: DocType) -> int | None:
+        """Fetch the API-reported total document count for *doc_type*."""
+        rk_type = _DOCTYPE_MAP[doc_type]
+        if doc_type == DocType.SKR:
+            rk_type = "prop"
+        params: dict[str, str] = {
+            "doktyp": rk_type,
+            "utformat": "json",
+            "antal": "1",
+            "sida": "1",
+        }
+        if doc_type in _SUBTYPE_MAP:
+            params["subtyp"] = _SUBTYPE_MAP[doc_type]
+        url = f"{BASE_URL}/dokumentlista/?" + urlencode(params)
+        data = await self._fetch_json(url)
+        if not data:
+            return None
+        traffar = data.get("dokumentlista", {}).get("@traffar")
+        if traffar:
+            try:
+                return int(traffar)
+            except (ValueError, TypeError):
+                pass
+        return None
+
     async def collect(
         self,
         doc_type: DocType,
@@ -304,7 +333,90 @@ class RiksdagenCollector(BaseCollector):
         skip_content: bool = False,
         offset: int = 0,
     ) -> AsyncIterator[Document]:
-        """Yield documents from the Riksdagen API."""
+        """Yield documents from the Riksdagen API.
+
+        When the total number of documents exceeds the API's pagination limit
+        (~10 000) and no date/session filters are applied, automatically splits
+        the query by calendar year to retrieve all results.
+        """
+        if doc_type not in _DOCTYPE_MAP:
+            raise ValueError(f"Unsupported doc type for Riksdagen: {doc_type}")
+
+        # Only consider year splitting when no filters narrow the query
+        if session is None and since is None and until is None and offset == 0 and limit is None:
+            total = await self._probe_total(doc_type)
+            if total is not None and total > _PAGINATION_LIMIT:
+                self.total_available = total
+                logger.info(
+                    "%s: %d documents exceeds pagination limit — splitting by year",
+                    doc_type.value,
+                    total,
+                )
+                count = 0
+                current_year = date.today().year
+                consecutive_empty = 0
+
+                for year in range(current_year, 1900, -1):
+                    year_since = date(year, 1, 1)
+                    year_until = date(year, 12, 31)
+                    year_limit = (limit - count) if limit else None
+                    year_count = 0
+
+                    async for doc in self._collect_pages(
+                        doc_type,
+                        since=year_since,
+                        until=year_until,
+                        limit=year_limit,
+                        skip_content=skip_content,
+                    ):
+                        yield doc
+                        count += 1
+                        year_count += 1
+                        if limit and count >= limit:
+                            self.total_available = total
+                            return
+
+                    if year_count > 0:
+                        consecutive_empty = 0
+                        logger.debug("%s year %d: %d documents", doc_type.value, year, year_count)
+                    else:
+                        consecutive_empty += 1
+                        if consecutive_empty >= 10:
+                            logger.debug(
+                                "%s: %d consecutive empty years — stopping at %d",
+                                doc_type.value,
+                                consecutive_empty,
+                                year,
+                            )
+                            break
+
+                self.total_available = total
+                return
+
+        # Delegate to page-based collection
+        async for doc in self._collect_pages(
+            doc_type,
+            session=session,
+            since=since,
+            until=until,
+            limit=limit,
+            skip_content=skip_content,
+            offset=offset,
+        ):
+            yield doc
+
+    async def _collect_pages(
+        self,
+        doc_type: DocType,
+        *,
+        session: str | None = None,
+        since: date | None = None,
+        until: date | None = None,
+        limit: int | None = None,
+        skip_content: bool = False,
+        offset: int = 0,
+    ) -> AsyncIterator[Document]:
+        """Yield documents using page-based pagination."""
         if doc_type not in _DOCTYPE_MAP:
             raise ValueError(f"Unsupported doc type for Riksdagen: {doc_type}")
 
