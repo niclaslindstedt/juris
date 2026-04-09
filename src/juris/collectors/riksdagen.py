@@ -7,6 +7,7 @@ import re
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -75,6 +76,7 @@ class RiksdagenCollector(BaseCollector):
 
     def __init__(self, rate_limit: float = 0.5) -> None:
         super().__init__(rate_limit=rate_limit, base_url=BASE_URL)
+        self._last_fetch_error: str | None = None
 
     async def _fetch_json(self, url: str) -> dict[str, Any] | None:
         """Fetch a URL and return parsed JSON, or None on error."""
@@ -82,8 +84,17 @@ class RiksdagenCollector(BaseCollector):
             resp = await self._fetch_with_retry("GET", url)
             result: dict[str, Any] = resp.json()
             return result
-        except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
+        except httpx.HTTPStatusError as e:
+            self._last_fetch_error = f"HTTP {e.response.status_code}"
+            logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
+            return None
+        except httpx.HTTPError as e:
+            self._last_fetch_error = type(e).__name__
+            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
+            return None
+        except ValueError as e:
+            self._last_fetch_error = f"JSON parse error: {e}"
+            logger.warning("Failed to parse JSON from %s: %s", url, e)
             return None
 
     async def _fetch_document_html(self, dok_id: str) -> str | None:
@@ -94,6 +105,74 @@ class RiksdagenCollector(BaseCollector):
         doc_data = data.get("dokumentstatus", {}).get("dokument", {})
         html: str | None = doc_data.get("html")
         return html
+
+    @staticmethod
+    def _url_with_page(url: str, page: int) -> str | None:
+        """Return a copy of *url* with the ``p`` query parameter set to *page*."""
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        if "p" not in params:
+            return None
+        params["p"] = [str(page)]
+        return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+
+    async def _verify_pagination_end(
+        self, failed_url: str, prev_url: str | None, count: int
+    ) -> None:
+        """Check adjacent pages to determine if a fetch failure is the natural end.
+
+        After a page fetch fails during pagination, this method re-fetches the
+        previous page (to confirm connectivity) and tries the next page (to
+        confirm it also fails).  The results are logged so the user can see
+        whether this is the normal end of results or a possible ban/rate-limit.
+        """
+        parsed = urlparse(failed_url)
+        params = parse_qs(parsed.query)
+        page_strs = params.get("p")
+        if not page_strs:
+            # No pagination parameter — can't verify
+            return
+        current_page = int(page_strs[0])
+
+        logger.info("Verifying end of results (failed at page %d)…", current_page)
+
+        # Check previous page
+        check_prev = prev_url or self._url_with_page(failed_url, current_page - 1)
+        prev_ok = False
+        if check_prev and current_page > 1:
+            prev_data = await self._fetch_json(check_prev)
+            prev_ok = bool(prev_data and prev_data.get("dokumentlista", {}).get("dokument"))
+
+        # Check next page
+        next_url = self._url_with_page(failed_url, current_page + 1)
+        next_ok = False
+        if next_url:
+            next_data = await self._fetch_json(next_url)
+            next_ok = bool(next_data and next_data.get("dokumentlista", {}).get("dokument"))
+
+        if prev_ok and not next_ok:
+            logger.info(
+                "Confirmed end of results at page %d (%d documents). "
+                "Previous page OK, next page also has no results.",
+                current_page,
+                count,
+            )
+        elif not prev_ok:
+            logger.warning(
+                "Possible rate limit or block: previous page (page %d) also failed. "
+                "Results may be incomplete (%d documents collected from %d pages).",
+                current_page - 1,
+                count,
+                current_page - 1,
+            )
+        else:
+            # prev_ok and next_ok — the failed page is an isolated gap
+            logger.warning(
+                "Unexpected gap at page %d (previous and next pages both OK). "
+                "%d documents collected — results may have gaps.",
+                current_page,
+                count,
+            )
 
     def _parse_document(
         self,
@@ -233,10 +312,18 @@ class RiksdagenCollector(BaseCollector):
             params["tom"] = until.isoformat()
 
         url = f"{BASE_URL}/dokumentlista/?" + "&".join(f"{k}={v}" for k, v in params.items())
+        prev_url: str | None = None
 
         while url:
             data = await self._fetch_json(url)
             if not data:
+                if count > 0:
+                    await self._verify_pagination_end(url, prev_url, count)
+                else:
+                    logger.warning(
+                        "Failed to fetch initial page: %s",
+                        self._last_fetch_error or "unknown error",
+                    )
                 break
 
             doc_list = data.get("dokumentlista", {})
@@ -275,6 +362,7 @@ class RiksdagenCollector(BaseCollector):
             # Follow pagination
             next_url = doc_list.get("@nasta_sida")
             if next_url and (not limit or count < limit):
+                prev_url = url
                 url = next_url
             else:
                 break

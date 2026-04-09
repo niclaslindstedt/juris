@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -259,4 +260,202 @@ async def test_riksdagen_collect_captures_traffar() -> None:
 
     assert collector.total_available == 15432
     assert len(docs) == 1
+    await collector.close()
+
+
+# ---------------------------------------------------------------------------
+# Riksdagen: improved error logging tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_riksdagen_fetch_json_logs_http_status_code(caplog: pytest.LogCaptureFixture) -> None:
+    """_fetch_json should log the HTTP status code on HTTPStatusError."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    not_found = MagicMock(spec=httpx.Response)
+    not_found.status_code = 404
+    not_found.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("Not Found", request=MagicMock(), response=not_found)
+    )
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(return_value=not_found)
+    collector._client = mock_client
+
+    with caplog.at_level("WARNING"):
+        result = await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?p=501")
+
+    assert result is None
+    assert collector._last_fetch_error == "HTTP 404"
+    assert "HTTP 404" in caplog.text
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_riksdagen_fetch_json_logs_network_error_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """_fetch_json should log the exception type name on network errors."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+    collector._client = mock_client
+
+    with caplog.at_level("WARNING"):
+        result = await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?p=1")
+
+    assert result is None
+    assert collector._last_fetch_error == "ConnectError"
+    assert "ConnectError" in caplog.text
+    await collector.close()
+
+
+# ---------------------------------------------------------------------------
+# Riksdagen: pagination end verification tests
+# ---------------------------------------------------------------------------
+
+
+def _make_api_response(
+    documents: list[dict[str, str]] | None = None,
+    next_page: str | None = None,
+) -> MagicMock:
+    """Build a mock httpx.Response that returns a Riksdagen-style JSON body."""
+    body: dict[str, Any] = {"dokumentlista": {"@traffar": "100"}}
+    if documents is not None:
+        body["dokumentlista"]["dokument"] = documents
+    if next_page:
+        body["dokumentlista"]["@nasta_sida"] = next_page
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value=body)
+    return resp
+
+
+def _make_error_response(status: int = 404) -> MagicMock:
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = status
+    resp.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(f"HTTP {status}", request=MagicMock(), response=resp)
+    )
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_verify_pagination_end_confirms_end(caplog: pytest.LogCaptureFixture) -> None:
+    """Should log 'Confirmed end of results' when prev OK and next also fails."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    prev_resp = _make_api_response(documents=[{"dok_id": "X"}])
+    next_resp = _make_error_response(404)
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=[prev_resp, next_resp])
+    collector._client = mock_client
+
+    with caplog.at_level("INFO"):
+        await collector._verify_pagination_end(
+            "https://data.riksdagen.se/dokumentlista/?p=50&doktyp=prop",
+            None,
+            980,
+        )
+
+    assert "Confirmed end of results" in caplog.text
+    assert "980 documents" in caplog.text
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_verify_pagination_end_warns_possible_block(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Should warn about possible block when previous page also fails."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    prev_resp = _make_error_response(403)
+    next_resp = _make_error_response(403)
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=[prev_resp, next_resp])
+    collector._client = mock_client
+
+    with caplog.at_level("WARNING"):
+        await collector._verify_pagination_end(
+            "https://data.riksdagen.se/dokumentlista/?p=50&doktyp=prop",
+            None,
+            980,
+        )
+
+    assert "Possible rate limit or block" in caplog.text
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_verify_pagination_end_warns_gap(caplog: pytest.LogCaptureFixture) -> None:
+    """Should warn about unexpected gap when next page succeeds."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 0
+    collector._backoff_base = 0.01
+
+    prev_resp = _make_api_response(documents=[{"dok_id": "X"}])
+    next_resp = _make_api_response(documents=[{"dok_id": "Y"}])
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=[prev_resp, next_resp])
+    collector._client = mock_client
+
+    with caplog.at_level("WARNING"):
+        await collector._verify_pagination_end(
+            "https://data.riksdagen.se/dokumentlista/?p=50&doktyp=prop",
+            None,
+            980,
+        )
+
+    assert "Unexpected gap" in caplog.text
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_verify_pagination_end_skips_without_page_param(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Should return silently when the URL has no 'p' parameter."""
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+
+    with caplog.at_level("INFO"):
+        await collector._verify_pagination_end(
+            "https://data.riksdagen.se/dokumentlista/?doktyp=prop&sida=1",
+            None,
+            0,
+        )
+
+    # No verification messages should be logged
+    assert "Verifying" not in caplog.text
     await collector.close()

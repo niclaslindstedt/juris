@@ -116,8 +116,11 @@ class RegeringenCollector(BaseCollector):
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.text
+        except httpx.HTTPStatusError as e:
+            logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
+            return None
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
+            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
             return None
 
     # ------------------------------------------------------------------
