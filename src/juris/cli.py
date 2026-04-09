@@ -28,7 +28,13 @@ from juris.index import (
     update_counts,
     update_index,
 )
-from juris.logging import CollectionLogger, CompositeProgress, log_dir_path, setup_file_logging
+from juris.logging import (
+    CollectionLogger,
+    CompositeProgress,
+    log_dir_path,
+    setup_file_logging,
+    setup_global_debug_logging,
+)
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
 from juris.report import CollectionReport, ReportDiff
@@ -201,6 +207,96 @@ def _print_agent_help(ctx: click.Context, param: click.Parameter, value: bool) -
     ctx.exit()
 
 
+def _generate_debug_agent_help() -> str:
+    """Build a debugging-focused reference prompt for AI agents."""
+    lines: list[str] = []
+
+    # Include the full help-agent reference
+    lines.append(_generate_agent_help())
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Debugging information
+    lines.append("# Debugging juris")
+    lines.append("")
+
+    lines.append("## Log locations")
+    lines.append("")
+    lines.append("All paths are relative to the data directory (default: `data`).")
+    lines.append("")
+    lines.append("- **Global debug log**: `.logs/debug.log` — always-on, captures DEBUG-level")
+    lines.append("  messages from every command, even without `--verbose`.")
+    lines.append("- **Per-run text logs**: `.logs/{timestamp}_{source}_{doc_type}.log` —")
+    lines.append("  DEBUG-level text log created for each collection run.")
+    lines.append("- **Per-run structured logs**: `.logs/{timestamp}_{source}_{doc_type}.jsonl` —")
+    lines.append("  one JSON entry per document with status, warnings, errors, and a final")
+    lines.append("  summary line (`type: summary`).")
+    lines.append("")
+
+    lines.append("## State and reports")
+    lines.append("")
+    lines.append("- **Collection state**: `.state/{source}_{doc_type}.json` — tracks")
+    lines.append("  `last_fetched_date`, `total_collected`, `last_run_at` for incremental runs.")
+    lines.append("- **Coverage reports**: `.reports/{timestamp}.json` with index at")
+    lines.append("  `.reports/index.json`.")
+    lines.append("")
+
+    lines.append("## Useful commands")
+    lines.append("")
+    lines.append("```sh")
+    lines.append("# Enable verbose console output (DEBUG level)")
+    lines.append("juris -v <command>")
+    lines.append("")
+    lines.append("# List recent collection runs with summary stats")
+    lines.append("juris logs")
+    lines.append("")
+    lines.append("# Show only failed/warned documents")
+    lines.append("juris logs --failures")
+    lines.append("")
+    lines.append("# Inspect a specific run")
+    lines.append("juris logs --run <run-name>")
+    lines.append("")
+    lines.append("# Filter logs by source or type")
+    lines.append("juris logs --source riksdagen --type prop")
+    lines.append("")
+    lines.append("# Validate collected documents for structural issues")
+    lines.append("juris validate")
+    lines.append("juris validate --type prop --fix")
+    lines.append("")
+    lines.append("# Check collection status and statistics")
+    lines.append("juris status")
+    lines.append("juris stats")
+    lines.append("")
+    lines.append("# View the global debug log")
+    lines.append("tail -f data/.logs/debug.log")
+    lines.append("```")
+    lines.append("")
+
+    lines.append("## Common debugging steps")
+    lines.append("")
+    lines.append("1. Check the global debug log (`data/.logs/debug.log`) for errors and warnings.")
+    lines.append("2. Run `juris logs --failures` to find documents that failed or had warnings.")
+    lines.append("3. Inspect a specific run with `juris logs --run <run-name>`")
+    lines.append("   for per-document details.")
+    lines.append("4. Check collection state files (`.state/`) to see")
+    lines.append("   `last_fetched_date` and whether")
+    lines.append("   incremental collection is picking up from the right point.")
+    lines.append("5. Re-run with `-v` for real-time verbose output: `juris -v collect ...`")
+    lines.append("6. Use `juris validate` to check document integrity after collection.")
+    lines.append("7. Compare reports with `juris report diff <id>` to spot missing documents.")
+
+    return "\n".join(lines)
+
+
+def _print_debug_agent_help(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    """Eager callback for --debug-agent: print debugging prompt and exit."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(_generate_debug_agent_help())
+    ctx.exit()
+
+
 def _parse_date(value: str | None) -> date | None:
     if value is None:
         return None
@@ -342,6 +438,14 @@ class _VerboseReporter:
     help="Print a reference prompt for AI agents and exit.",
 )
 @click.option(
+    "--debug-agent",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=_print_debug_agent_help,
+    help="Print a debugging reference prompt for AI agents and exit.",
+)
+@click.option(
     "--data-dir",
     type=click.Path(),
     default="data",
@@ -351,18 +455,29 @@ class _VerboseReporter:
 @click.pass_context
 def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
     """juris — Swedish legal data collection tool."""
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.WARNING,
-        format="%(levelname)s %(message)s",
-    )
+    # Root logger at DEBUG so the global debug file handler receives everything.
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    # Console handler — shows WARNING+ by default, DEBUG when verbose.
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG if verbose else logging.WARNING)
+    console.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    root.addHandler(console)
+
     if not verbose:
         logging.getLogger("juris.cli").setLevel(logging.INFO)
         logging.getLogger("juris.pipeline").setLevel(logging.INFO)
         logging.getLogger("juris.index").setLevel(logging.INFO)
     logging.getLogger("httpx").setLevel(logging.WARNING if not verbose else logging.DEBUG)
     logging.getLogger("httpcore").setLevel(logging.WARNING if not verbose else logging.DEBUG)
+
+    # Always-on debug log file (captures everything regardless of --verbose).
+    data_path = Path(data_dir)
+    setup_global_debug_logging(data_path)
+
     ctx.ensure_object(dict)
-    ctx.obj["data_dir"] = Path(data_dir)
+    ctx.obj["data_dir"] = data_path
 
 
 @main.command()

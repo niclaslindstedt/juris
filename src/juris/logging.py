@@ -113,6 +113,24 @@ def setup_file_logging(log_dir: Path, source: str, doc_type: str) -> logging.Fil
 # ---------------------------------------------------------------------------
 
 
+def setup_global_debug_logging(data_dir: Path) -> logging.FileHandler:
+    """Add a FileHandler that appends all messages to a persistent debug.log.
+
+    Unlike :func:`setup_file_logging` (which creates a per-run file),
+    this writes to a single ``<data_dir>/.logs/debug.log`` so that
+    debug-level messages are always captured regardless of ``--verbose``.
+
+    Returns the handler so the caller can remove it if needed.
+    """
+    log_dir = log_dir_path(data_dir)
+    log_file = log_dir / "debug.log"
+    handler = logging.FileHandler(log_file, encoding="utf-8")
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
 class CollectionLogger:
     """Writes structured JSONL entries and captures per-document warnings.
 
