@@ -1,48 +1,43 @@
 import { DOC_TYPES, DOC_TYPE_CATEGORIES } from "../data/sourceData";
 
-const docTypeMap = new Map(DOC_TYPES.map((dt) => [dt.value, dt]));
-
-const CATEGORY_ICONS: Record<string, string> = {
-  "Swedish Parliament": "🏛",
-  "Swedish Government": "🏢",
-  Courts: "⚖",
-  Authorities: "🔍",
-  "EU Law": "🇪🇺",
+const categoryIcons: Record<string, string> = {
+  "Swedish Parliament": "\uD83C\uDFDB\uFE0F",
+  "Swedish Government": "\uD83C\uDDF8\uD83C\uDDEA",
+  "Courts": "\u2696\uFE0F",
+  "Authorities": "\uD83D\uDCCB",
+  "EU Law": "\uD83C\uDDEA\uD83C\uDDFA",
 };
 
 export default function DocTypes() {
   return (
-    <section id="doc-types" className="py-20 px-6">
-      <div className="mx-auto max-w-6xl">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-          Document Types
+    <section id="doc-types" className="border-t border-border py-20 md:py-28">
+      <div className="mx-auto max-w-6xl px-6">
+        <h2 className="text-center text-3xl font-bold text-text-primary md:text-4xl">
+          {DOC_TYPES.length} document types across Swedish and EU law
         </h2>
-        <p className="text-text-secondary text-center mb-12 max-w-2xl mx-auto">
-          {DOC_TYPES.length} document types across 5 categories of Swedish and European law.
+        <p className="mx-auto mt-4 max-w-2xl text-center text-text-secondary">
+          Every document type is normalized into the same{" "}
+          <code className="rounded bg-surface-alt px-1.5 py-0.5 text-xs text-accent">Document</code>{" "}
+          schema with Pydantic validation, regardless of its source format.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Object.entries(DOC_TYPE_CATEGORIES).map(([category, types]) => (
-            <div
-              key={category}
-              className="p-5 rounded-xl border border-border bg-surface-100"
-            >
-              <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">
-                <span className="mr-2">{CATEGORY_ICONS[category]}</span>
-                {category}
-              </h3>
+        <div className="mt-14 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {Object.entries(DOC_TYPE_CATEGORIES).map(([category, docTypeValues]) => (
+            <div key={category} className="rounded-xl border border-border bg-surface-alt p-6">
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-xl">{categoryIcons[category] ?? "\uD83D\uDCC4"}</span>
+                <h3 className="text-lg font-semibold text-text-primary">{category}</h3>
+              </div>
               <div className="space-y-2">
-                {types.map((value) => {
-                  const dt = docTypeMap.get(value);
+                {docTypeValues.map((dtValue) => {
+                  const dt = DOC_TYPES.find((d) => d.value === dtValue);
                   if (!dt) return null;
                   return (
-                    <div key={value} className="flex items-baseline gap-3">
-                      <code className="text-accent font-mono text-sm w-16 shrink-0">
+                    <div key={dt.value} className="flex items-start gap-3">
+                      <code className="shrink-0 rounded bg-surface px-2 py-0.5 text-xs font-semibold text-accent">
                         {dt.value}
                       </code>
-                      <span className="text-text-secondary text-sm">
-                        {dt.description}
-                      </span>
+                      <span className="text-sm text-text-secondary">{dt.description}</span>
                     </div>
                   );
                 })}
