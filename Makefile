@@ -14,14 +14,14 @@ run: install
 	$(VENV)/bin/juris $(ARGS)
 
 lint:
-	$(PYTHON) -m ruff check src/
-	$(PYTHON) -m ruff format --check src/
+	$(PYTHON) -m ruff check src/ tests/
+	$(PYTHON) -m ruff format --check src/ tests/
 
 typecheck:
 	$(PYTHON) -m mypy src/
 
 format:
-	$(PYTHON) -m ruff format src/
+	$(PYTHON) -m ruff format src/ tests/
 
 test:
 	$(PYTHON) -m pytest tests/ -v --ignore=tests/test_e2e.py

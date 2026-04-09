@@ -78,6 +78,13 @@ entry="## [${NEW_TAG#v}] - ${DATE}\n"
 # Also write release notes (just this version) for GitHub Release body
 echo -e "$entry" > "$ROOT_DIR/release-notes.md"
 
+# Guard: skip prepend if this version already exists in the changelog
+VERSION="${NEW_TAG#v}"
+if [[ -f "$CHANGELOG" ]] && grep -qF "## [${VERSION}]" "$CHANGELOG"; then
+  echo "Version $VERSION already exists in CHANGELOG.md, skipping prepend"
+  exit 0
+fi
+
 # Prepend to CHANGELOG.md
 if [[ -f "$CHANGELOG" ]]; then
   # Insert after the header line

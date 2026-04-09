@@ -1,7 +1,6 @@
 name: bet
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

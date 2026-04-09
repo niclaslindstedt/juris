@@ -106,8 +106,7 @@ class EurLexCollector(BaseCollector):
 
     async def _fetch_full_text(self, celex: str) -> str | None:
         """Fetch full text from EUR-Lex HTML page."""
-        client = await self._get_client()
-        return await fetch_eurlex_text(client, self._limiter, celex)
+        return await fetch_eurlex_text(self, celex)
 
     async def collect(
         self,
@@ -136,7 +135,6 @@ class EurLexCollector(BaseCollector):
                 pass
 
         filters = build_sparql_date_filters(since, until)
-        client = await self._get_client()
         count = 0
         sparql_offset = offset
 
@@ -149,7 +147,7 @@ class EurLexCollector(BaseCollector):
             )
 
             logger.debug("EUR-Lex SPARQL query for %s offset=%d", doc_type.value, sparql_offset)
-            rows = await sparql_query(client, self._limiter, query)
+            rows = await sparql_query(self, query)
 
             if not rows:
                 break
@@ -177,7 +175,6 @@ class EurLexCollector(BaseCollector):
 
     async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single EU document by CELEX number."""
-        client = await self._get_client()
         query = f"""\
 PREFIX cdm: <http://publications.europa.eu/ontology/cdm#>
 SELECT ?celex ?title ?date ?restype WHERE {{
@@ -200,7 +197,7 @@ SELECT ?celex ?title ?date ?restype WHERE {{
   BIND(COALESCE(?title_sv, ?title_en, ?celex) AS ?title)
 }} LIMIT 1"""
 
-        rows = await sparql_query(client, self._limiter, query)
+        rows = await sparql_query(self, query)
         if not rows:
             return None
 

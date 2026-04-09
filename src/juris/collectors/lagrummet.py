@@ -90,12 +90,9 @@ class LagrummetCollector(BaseCollector):
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
 
     async def _fetch_html(self, url: str) -> str | None:
-        """Fetch a URL and return HTML text, or None on error."""
-        await self._limiter.wait()
-        client = await self._get_client()
+        """Fetch a URL with retry and return HTML text, or None on error."""
         try:
-            resp = await client.get(url)
-            resp.raise_for_status()
+            resp = await self._fetch_with_retry("GET", url)
             return resp.text
         except httpx.HTTPStatusError as e:
             logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)

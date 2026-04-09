@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from typing import TYPE_CHECKING
 
 import httpx
 
-from juris.utils import RateLimiter, html_to_text
+from juris.utils import html_to_text
+
+if TYPE_CHECKING:
+    from juris.collectors.base import BaseCollector
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +42,14 @@ def build_sparql_date_filters(
 
 
 async def fetch_eurlex_text(
-    client: httpx.AsyncClient,
-    limiter: RateLimiter,
+    collector: BaseCollector,
     celex: str,
 ) -> str | None:
-    """Fetch full text from EUR-Lex HTML page, trying Swedish then English."""
-    await limiter.wait()
+    """Fetch full text from EUR-Lex HTML page with retry, trying Swedish then English."""
     for lang in ("SV", "EN"):
         url = eurlex_html_url(celex, lang)
         try:
-            resp = await client.get(url, follow_redirects=True)
+            resp = await collector._fetch_with_retry("GET", url, follow_redirects=True)
             if resp.status_code == 200 and len(resp.text) > 500:
                 return html_to_text(resp.text)
         except httpx.HTTPError:
@@ -56,18 +58,17 @@ async def fetch_eurlex_text(
 
 
 async def sparql_query(
-    client: httpx.AsyncClient,
-    limiter: RateLimiter,
+    collector: BaseCollector,
     query: str,
 ) -> list[dict[str, dict[str, str]]]:
-    """Execute a SPARQL SELECT query and return the result bindings.
+    """Execute a SPARQL SELECT query with retry and return the result bindings.
 
     Each binding is a dict mapping variable names to ``{"type": ..., "value": ...}``
     dicts as returned by the SPARQL JSON results format.
     """
-    await limiter.wait()
     try:
-        resp = await client.post(
+        resp = await collector._fetch_with_retry(
+            "POST",
             SPARQL_ENDPOINT,
             data={"query": query},
             headers={
@@ -75,7 +76,6 @@ async def sparql_query(
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        resp.raise_for_status()
         data = resp.json()
         result: list[dict[str, dict[str, str]]] = data.get("results", {}).get("bindings", [])
         return result

@@ -1,7 +1,6 @@
 name: pmod
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:

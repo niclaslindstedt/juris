@@ -262,7 +262,7 @@ def _generate_debug_agent_help() -> str:
     lines.append("")
     lines.append("# Validate collected documents for structural issues")
     lines.append("juris validate")
-    lines.append("juris validate --type prop --fix")
+    lines.append("juris validate --type prop")
     lines.append("")
     lines.append("# Check collection status and statistics")
     lines.append("juris status")
@@ -1506,9 +1506,8 @@ def _display_search_results(results: list[SearchResult], query: str) -> None:
     type=click.Choice([dt.value for dt in DocType]),
     help="Only validate this document type.",
 )
-@click.option("--fix", is_flag=True, help="Attempt to auto-fix minor issues (e.g. missing doc_id).")
 @click.pass_context
-def validate(ctx: click.Context, doc_type: str | None, fix: bool) -> None:
+def validate(ctx: click.Context, doc_type: str | None) -> None:
     """Validate collected data quality.
 
     Checks for missing required fields, suspicious values, duplicate doc_ids,

@@ -30,6 +30,18 @@ _SWEDISH_MONTHS: dict[str, int] = {
     "oktober": 10,
     "november": 11,
     "december": 12,
+    # Abbreviated forms (used by JO/JK)
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "okt": 10,
+    "nov": 11,
+    "dec": 12,
 }
 
 

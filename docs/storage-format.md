@@ -189,6 +189,6 @@ instance.
 whether a document has already been saved by looking for its JSON file.
 Used by the pipeline to skip duplicates.
 
-**`_doc_dir(doc_type, session, data_dir)`** — Computes the directory path
-for a given document type and session. Internal helper used by the other
-functions.
+**`doc_dir(base_dir, doc_type, session)`** — Computes the directory path
+for a given document type and session. Used by the storage functions and
+the collector base class for attachment downloads.

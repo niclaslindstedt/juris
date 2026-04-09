@@ -12,14 +12,15 @@ from typing import Any, ClassVar
 
 import httpx
 
+from juris import __version__
 from juris.models import DocType, Document, SearchResult, Source
 from juris.pdf import extract_text as extract_pdf_text
-from juris.storage import _doc_dir
+from juris.storage import doc_dir
 from juris.utils import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "juris/0.1.0 (Swedish law data collector)"
+USER_AGENT = f"juris/{__version__} (Swedish law data collector)"
 
 # HTTP status codes that are considered transient and worth retrying
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -291,7 +292,7 @@ class BaseCollector(ABC):
 
         limiter = self._limiter
 
-        attach_dir = _doc_dir(base_dir, doc.doc_type, doc.session) / "attachments"
+        attach_dir = doc_dir(base_dir, doc.doc_type, doc.session) / "attachments"
         primary_text: str | None = None
 
         for i, attachment in enumerate(pdf_attachments):

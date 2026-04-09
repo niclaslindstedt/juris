@@ -238,14 +238,25 @@ src/juris/
 ## Development
 
 ```bash
-# Install with dev dependencies
+# Install with dev dependencies (or use: make install)
 pip install -e ".[dev]"
 
-# Lint
-ruff check src/
+# Lint and format check
+ruff check src/ tests/
+ruff format --check src/ tests/
 
-# Type check
+# Type check (strict mode)
 mypy src/
+
+# Run unit tests
+pytest tests/ --ignore=tests/test_e2e.py
+
+# Or use the Makefile shortcuts
+make lint        # Lint + format check
+make typecheck   # Type check
+make test        # Unit tests
+make format      # Auto-format code
+make test-e2e    # End-to-end tests (hits live APIs)
 ```
 
 ## Contributing

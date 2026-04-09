@@ -58,6 +58,10 @@ _HFD_REF_RE = re.compile(r"(?:HFD|RÅ)\s+(\d{4})\s+ref\.\s*(\d+)")
 # Regex to parse MÖD references like "MÖD 2011:26"
 _MOD_REF_RE = re.compile(r"MÖD\s+(\d{4}):(\d+)")
 
+# Regex to parse PMÖD references like "PMÖD 2019:1" or "PMT 12345-18"
+_PMOD_REF_RE = re.compile(r"PMÖD\s+(\d{4}):(\d+)")
+_PMT_REF_RE = re.compile(r"PMT\s+(\d+)-(\d{2})")
+
 PAGE_SIZE = 20
 
 
@@ -122,11 +126,32 @@ def _parse_mod_reference(referat_list: list[str]) -> tuple[str, str | None]:
     return "", None
 
 
+def _parse_pmod_reference(referat_list: list[str]) -> tuple[str, str | None]:
+    """Extract (designation, session) from PMÖD reference strings.
+
+    Parses formats like "PMÖD 2019:1" or case numbers like "PMT 12345-18".
+    Returns ("", None) if no match.
+    """
+    for ref in referat_list:
+        m = _PMOD_REF_RE.search(ref.strip())
+        if m:
+            return m.group(2), m.group(1)  # (number, year)
+    # Fallback: try PMT case number format
+    for ref in referat_list:
+        m = _PMT_REF_RE.search(ref.strip())
+        if m:
+            year_suffix = m.group(2)
+            year = f"20{year_suffix}" if int(year_suffix) < 80 else f"19{year_suffix}"
+            return f"{m.group(1)}-{m.group(2)}", year
+    return "", None
+
+
 _REFERENCE_PARSERS: dict[DocType, Callable[[list[str]], tuple[str, str | None]]] = {
     DocType.NJA: _parse_nja_reference,
     DocType.AD: _parse_ad_reference,
     DocType.HFD: _parse_hfd_reference,
     DocType.MOD: _parse_mod_reference,
+    DocType.PMOD: _parse_pmod_reference,
 }
 
 
@@ -142,12 +167,9 @@ class DomstolCollector(BaseCollector):
     async def _fetch_json(
         self, path: str, params: dict[str, str | int] | None = None
     ) -> list[dict[str, Any]] | dict[str, Any] | None:
-        """Fetch JSON from the API. Returns parsed JSON or None on error."""
-        await self._limiter.wait()
-        client = await self._get_client()
+        """Fetch JSON from the API with retry. Returns parsed JSON or None on error."""
         try:
-            resp = await client.get(path, params=params)
-            resp.raise_for_status()
+            resp = await self._fetch_with_retry("GET", path, params=params)
             result: list[dict[str, Any]] | dict[str, Any] = resp.json()
             return result
         except httpx.HTTPStatusError as e:
@@ -340,17 +362,12 @@ class DomstolCollector(BaseCollector):
             doc.text = _strip_court_header(doc.text)
         return doc
 
-    async def get_document(
-        self,
-        source_id: str,
-        doc_type: DocType | None = None,
-    ) -> Document | None:
+    async def get_document(self, source_id: str) -> Document | None:
         """Fetch a single publication by its UUID."""
         data = await self._fetch_json(f"/api/v1/publiceringar/{source_id}")
         if not data or not isinstance(data, dict):
             return None
-        if doc_type is None:
-            court_code = data.get("domstol", {}).get("domstolKod", "HDO")
-            reverse_map = {v: k for k, v in _COURT_MAP.items()}
-            doc_type = reverse_map.get(court_code, DocType.NJA)
+        court_code = data.get("domstol", {}).get("domstolKod", "HDO")
+        reverse_map = {v: k for k, v in _COURT_MAP.items()}
+        doc_type = reverse_map.get(court_code, DocType.NJA)
         return self._parse_publication(data, doc_type)
