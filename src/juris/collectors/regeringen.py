@@ -454,15 +454,21 @@ class RegeringenCollector(BaseCollector):
                 if not doc:
                     continue
 
-                # For docs with fallback (slug) designations, try PDF extraction
-                is_fallback = len(doc.designation) > 15 or doc.designation.count("-") > 1
-                if doc.attachments and (
-                    doc_type == DocType.LAGR or (doc_type == DocType.DS and is_fallback)
-                ):
-                    if doc_type == DocType.LAGR:
-                        doc = await self._try_lagr_designation_from_pdf(doc)
-                    elif doc_type == DocType.DS:
-                        doc = await self._try_ds_designation_from_pdf(doc)
+                # For docs with fallback (slug) designations, try PDF extraction.
+                # Skip this when only indexing metadata — it downloads PDFs.
+                if not skip_content:
+                    is_fallback = len(doc.designation) > 15 or doc.designation.count("-") > 1
+                    if doc.attachments and (
+                        doc_type == DocType.LAGR or (doc_type == DocType.DS and is_fallback)
+                    ):
+                        if doc_type == DocType.LAGR:
+                            doc = await self._try_lagr_designation_from_pdf(doc)
+                        elif doc_type == DocType.DS:
+                            doc = await self._try_ds_designation_from_pdf(doc)
+
+                if skip_content:
+                    doc.text = None
+                    doc.html = None
 
                 # Filter by session if requested
                 if session and doc.session != session:

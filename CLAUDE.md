@@ -8,13 +8,14 @@
 
 ```
 src/juris/
-├── cli.py              # Click CLI (collect, collect-type, collect-all, report, search, status, stats, logs, man, --help-agent)
+├── cli.py              # Click CLI (collect, collect-type, collect-all, update, report, search, status, stats, logs, man, --help-agent)
 ├── pipeline.py         # Reusable collection pipeline (collect_from_source, ProgressCallback)
 ├── models.py           # Pydantic models (Document, SearchResult, DocType, Source, Attachment)
 ├── report.py           # Collection coverage reports (generate, save, load, diff; .reports/ directory)
 ├── logging.py          # Collection run logging (JSONL per-document log + text file log)
 ├── search.py           # Document search (local + provider-based, search_local, search_all)
 ├── storage.py          # Dual-format file storage (JSON + Markdown with YAML frontmatter)
+├── index.py            # Remote document index (update, save, load; .index/ directory)
 ├── state.py            # Incremental collection state tracking (.state/ directory)
 ├── utils.py            # Shared utilities (rate limiting, text extraction, ID building)
 ├── pdf.py              # PDF text extraction via pymupdf
@@ -40,7 +41,8 @@ tests/
 ├── test_validate.py    # Document validation tests
 ├── test_logging.py     # Collection logging tests
 ├── test_report.py      # Report generation, persistence, diff, and CLI tests
-└── test_help_agent.py  # --help-agent flag tests
+├── test_help_agent.py  # --help-agent flag tests
+└── test_index.py       # Remote index and update command tests
 docs/
 ├── overview.md         # Project overview and use cases
 ├── architecture.md     # System architecture and data flow
@@ -155,3 +157,4 @@ The release pipeline (`release.yml`) then:
 - Output format: documents are stored as `data/{doc_type}/{session}/{id}.{json|md}`
 - Collection state is tracked in `.state/{source}_{doc_type}.json`
 - Coverage reports are stored in `.reports/{timestamp}.json` with an index at `.reports/index.json`
+- Remote document indexes are stored in `.index/{source}_{doc_type}.json`

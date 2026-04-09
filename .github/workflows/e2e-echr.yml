@@ -15,4 +15,4 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: pytest -m e2e "tests/test_e2e.py::TestHudocE2E::test_collect_echr" -v --timeout=120
+      - run: pytest -m e2e "tests/test_e2e.py::TestHudocE2E::test_collect_echr" "tests/test_e2e.py::TestHudocE2E::test_update_index" -v --timeout=120

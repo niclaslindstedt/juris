@@ -15,4 +15,4 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: pytest -m e2e "tests/test_e2e.py::TestRiksdagenE2E::test_collect_each_type[sou]" -v --timeout=120
+      - run: pytest -m e2e "tests/test_e2e.py::TestRiksdagenE2E::test_collect_each_type[sou]" "tests/test_e2e.py::TestRiksdagenE2E::test_update_index[sou]" -v --timeout=120

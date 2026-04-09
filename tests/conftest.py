@@ -7,6 +7,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+import click
 import pytest
 import yaml
 from click.testing import CliRunner
@@ -128,3 +129,31 @@ def run_collect(runner: CliRunner, args: list[str], data_dir: Path) -> None:
         f"Output: {result.output}\n"
         f"Stderr: {result.stderr if hasattr(result, 'stderr') else 'N/A'}"
     )
+
+
+def run_update(
+    runner: CliRunner, data_dir: Path, doc_type: str, *, limit: int = 3
+) -> click.testing.Result:
+    """Run ``juris update --type <doc_type> --limit <N>`` and assert success.
+
+    Returns the Click result so callers can inspect the output.
+    """
+    from juris.cli import main
+
+    result = runner.invoke(
+        main,
+        ["--data-dir", str(data_dir), "update", "--type", doc_type, "--limit", str(limit)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, (
+        f"update failed with exit code {result.exit_code}\nOutput: {result.output}\n"
+    )
+    return result
+
+
+def load_index(data_dir: Path, source: str, doc_type: str) -> dict | None:
+    """Load a remote index JSON file, or None if it doesn't exist."""
+    path = data_dir / ".index" / f"{source}_{doc_type}.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
