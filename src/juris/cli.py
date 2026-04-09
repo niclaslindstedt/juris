@@ -875,14 +875,39 @@ class _UpdateTracker(UpdateProgress):
     def __init__(self, label: str) -> None:
         self.label = label
         self._count = 0
+        self._total: int | None = None
+        self._status: str | None = None
+        self._start = time.monotonic()
         self._last_line_len = 0
 
-    def on_found(self, doc_id: str) -> None:
-        self._count += 1
-        line = f"\r  {self.label}: {self._count} found"
+    def _render(self) -> None:
+        elapsed = _format_elapsed(time.monotonic() - self._start)
+        count_str = f"{self._count:,} found"
+
+        parts: list[str] = []
+        if self._total is not None:
+            parts.append(f"of {self._total:,}")
+        if self._status:
+            parts.append(self._status)
+        else:
+            parts.append(elapsed)
+        detail = " \u00b7 ".join(parts)
+
+        line = f"\r  {self.label}: {count_str} ({detail})"
         padded = line.ljust(self._last_line_len)
         self._last_line_len = len(line)
         click.echo(padded, nl=False)
+
+    def on_found(self, doc_id: str) -> None:
+        self._count += 1
+        self._render()
+
+    def on_total(self, total: int) -> None:
+        self._total = total
+
+    def on_status(self, message: str) -> None:
+        self._status = message
+        self._render()
 
     def on_finish(self) -> None:
         click.echo()  # newline after progress
