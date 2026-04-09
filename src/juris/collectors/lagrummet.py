@@ -98,7 +98,7 @@ class LagrummetCollector(BaseCollector):
             resp.raise_for_status()
             return resp.text
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e)
+            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
             return None
 
     # ------------------------------------------------------------------
@@ -279,7 +279,7 @@ class LagrummetCollector(BaseCollector):
             if limit and count >= limit:
                 return
 
-            logger.info("Collecting %s from %s", agency.prefix, agency.agency_name)
+            logger.debug("Collecting %s from %s", agency.prefix, agency.agency_name)
             page = 1
 
             while True:
@@ -289,14 +289,14 @@ class LagrummetCollector(BaseCollector):
                     sep = "&" if "?" in listing_url else "?"
                     listing_url = f"{listing_url}{sep}{agency.page_param}={page}"
 
-                logger.info("Fetching listing page %d: %s", page, listing_url)
+                logger.debug("Fetching listing page %d: %s", page, listing_url)
                 html = await self._fetch_html(listing_url)
                 if not html:
                     break
 
                 items = self._parse_listing_page(html, agency)
                 if not items:
-                    logger.info("No items found on page %d, stopping.", page)
+                    logger.debug("No items found on page %d, stopping.", page)
                     break
 
                 for item in items:
@@ -333,7 +333,7 @@ class LagrummetCollector(BaseCollector):
                         count += 1
                         continue
 
-                    logger.info("Fetching detail: %s", item["title"][:80])
+                    logger.debug("Fetching detail: %s", item["title"][:80])
                     detail_html = await self._fetch_html(item["url"])
                     if not detail_html:
                         continue

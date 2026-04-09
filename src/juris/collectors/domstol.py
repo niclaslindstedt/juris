@@ -151,7 +151,7 @@ class DomstolCollector(BaseCollector):
             result: list[dict[str, Any]] | dict[str, Any] = resp.json()
             return result
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", path, e)
+            logger.warning("Failed to fetch %s: %s", path, e or type(e).__name__)
             return None
 
     # ------------------------------------------------------------------
@@ -290,7 +290,7 @@ class DomstolCollector(BaseCollector):
                 "pagesize": PAGE_SIZE,
             }
 
-            logger.info("Fetching publications page %d", page)
+            logger.debug("Fetching publications page %d", page)
             data = await self._fetch_json("/api/v1/publiceringar", params=params)
 
             if not data or not isinstance(data, list):

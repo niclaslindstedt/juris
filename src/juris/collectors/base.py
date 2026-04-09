@@ -263,7 +263,7 @@ class BaseCollector(ABC):
                     await asyncio.sleep(delay)
                     continue
             except (httpx.HTTPError, OSError) as e:
-                logger.warning("Failed to download %s: %s", url, e)
+                logger.warning("Failed to download %s: %s", url, e or type(e).__name__)
                 return False
 
         logger.warning(
@@ -290,7 +290,7 @@ class BaseCollector(ABC):
 
         for i, attachment in enumerate(pdf_attachments):
             dest = attach_dir / attachment.filename
-            logger.info("Downloading PDF: %s", attachment.filename)
+            logger.debug("Downloading PDF: %s", attachment.filename)
 
             if not await self._download_file(attachment.url, dest, limiter):
                 continue
@@ -302,7 +302,7 @@ class BaseCollector(ABC):
             if i == 0:
                 primary_text = extract_pdf_text(dest)
                 if primary_text:
-                    logger.info(
+                    logger.debug(
                         "Extracted %d chars from %s",
                         len(primary_text),
                         attachment.filename,

@@ -83,7 +83,7 @@ class RiksdagenCollector(BaseCollector):
             result: dict[str, Any] = resp.json()
             return result
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e)
+            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
             return None
 
     async def _fetch_document_html(self, dok_id: str) -> str | None:
@@ -264,7 +264,7 @@ class RiksdagenCollector(BaseCollector):
                     return
 
                 dok_id = item.get("dok_id", "")
-                logger.info("Fetching %s: %s", dok_id, item.get("titel", "")[:60])
+                logger.debug("Fetching %s: %s", dok_id, item.get("titel", "")[:60])
 
                 # Fetch full HTML content (skip when only metadata is wanted)
                 html = None if skip_content else await self._fetch_document_html(dok_id)

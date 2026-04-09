@@ -147,7 +147,7 @@ class EurLexCollector(BaseCollector):
                 offset=offset,
             )
 
-            logger.info("EUR-Lex SPARQL query for %s offset=%d", doc_type.value, offset)
+            logger.debug("EUR-Lex SPARQL query for %s offset=%d", doc_type.value, offset)
             rows = await sparql_query(client, self._limiter, query)
 
             if not rows:
