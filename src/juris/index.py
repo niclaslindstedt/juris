@@ -266,6 +266,10 @@ async def update_index(
     page_indexed = 0
     page_dates: list[str] = []
     docs_on_page = 0
+    consecutive_dups = 0  # consecutive duplicate docs (safety valve)
+
+    # Stop after this many consecutive duplicates — the source is likely cycling.
+    _DUP_STOP_THRESHOLD = _INDEX_PAGE_SIZE * 5  # 100 consecutive dups
 
     try:
         async for doc in collector.collect(
@@ -292,8 +296,19 @@ async def update_index(
                 entries.append(_doc_to_entry(doc))
                 index.entries = entries
                 page_indexed += 1
+                consecutive_dups = 0
                 if progress:
                     progress.on_found(doc.doc_id)
+            else:
+                consecutive_dups += 1
+                if consecutive_dups >= _DUP_STOP_THRESHOLD:
+                    logger.info(
+                        "Stopping %s/%s: %d consecutive duplicates — source is cycling",
+                        source_name,
+                        dt.value,
+                        consecutive_dups,
+                    )
+                    break
 
             # Flush page record after every _INDEX_PAGE_SIZE docs
             if docs_on_page >= _INDEX_PAGE_SIZE:

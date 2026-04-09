@@ -107,6 +107,18 @@ class RiksdagenCollector(BaseCollector):
         return html
 
     @staticmethod
+    def _extract_page(url: str) -> int | None:
+        """Extract the ``sida`` (page) parameter from a Riksdagen API URL."""
+        params = parse_qs(urlparse(url).query)
+        sida = params.get("sida")
+        if sida:
+            try:
+                return int(sida[0])
+            except (ValueError, IndexError):
+                pass
+        return None
+
+    @staticmethod
     def _url_with_page(url: str, page: int) -> str | None:
         """Return a copy of *url* with the ``p`` query parameter set to *page*."""
         parsed = urlparse(url)
@@ -367,9 +379,20 @@ class RiksdagenCollector(BaseCollector):
                 yield doc
                 count += 1
 
-            # Follow pagination
+            # Follow pagination — detect API cycling bug where @nasta_sida
+            # points to the same or earlier page, creating an infinite loop.
             next_url = doc_list.get("@nasta_sida")
             if next_url and (not limit or count < limit):
+                current_page = self._extract_page(url)
+                next_page = self._extract_page(next_url)
+                if current_page is not None and next_page is not None and next_page <= current_page:
+                    logger.info(
+                        "Pagination loop detected: page %d -> %d. Stopping after %d documents.",
+                        current_page,
+                        next_page,
+                        count,
+                    )
+                    break
                 prev_url = url
                 url = next_url
             else:
