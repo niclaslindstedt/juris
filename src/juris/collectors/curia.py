@@ -140,7 +140,7 @@ class CjeuCollector(BaseCollector):
                 offset=offset,
             )
 
-            logger.info("CJEU SPARQL query offset=%d", offset)
+            logger.debug("CJEU SPARQL query offset=%d", offset)
             rows = await sparql_query(client, self._limiter, query)
 
             if not rows:

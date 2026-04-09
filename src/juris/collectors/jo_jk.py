@@ -105,7 +105,7 @@ class JoJkCollector(BaseCollector):
             resp.raise_for_status()
             return resp.text
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e)
+            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
             return None
 
     async def _post_html(self, url: str, data: dict[str, str | list[str]]) -> str | None:
@@ -117,7 +117,7 @@ class JoJkCollector(BaseCollector):
             resp.raise_for_status()
             return resp.text
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to POST %s: %s", url, e)
+            logger.warning("Failed to POST %s: %s", url, e or type(e).__name__)
             return None
 
     # ------------------------------------------------------------------
@@ -141,7 +141,7 @@ class JoJkCollector(BaseCollector):
         for i in range(1, _JO_SITEMAP_COUNT + 1):
             if limit and len(results) >= limit:
                 break
-            logger.info("JO: fetching sitemap %d/%d...", i, _JO_SITEMAP_COUNT)
+            logger.debug("JO: fetching sitemap %d/%d...", i, _JO_SITEMAP_COUNT)
             sitemap_url = f"{JO_BASE_URL}/resolve-sitemap{i}.xml"
             xml_text = await self._fetch_html(sitemap_url)
             if not xml_text:
@@ -181,7 +181,7 @@ class JoJkCollector(BaseCollector):
 
                 results.append({"url": loc, "lastmod": lastmod})
 
-        logger.info("Found %d JO decision URLs from sitemaps", len(results))
+        logger.debug("Found %d JO decision URLs from sitemaps", len(results))
         return results
 
     # ------------------------------------------------------------------
@@ -208,7 +208,7 @@ class JoJkCollector(BaseCollector):
         while True:
             if limit and len(results) >= limit:
                 break
-            logger.info("JK: fetching search page %d...", page)
+            logger.debug("JK: fetching search page %d...", page)
             form_data: dict[str, str | list[str]] = {
                 "diarienummer": "",
                 "search": "",
@@ -248,7 +248,7 @@ class JoJkCollector(BaseCollector):
 
             page += 1
 
-        logger.info("Found %d JK decision URLs from search", len(results))
+        logger.debug("Found %d JK decision URLs from search", len(results))
         return results
 
     @staticmethod

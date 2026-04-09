@@ -352,9 +352,15 @@ class _VerboseReporter:
 def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
     """juris — Swedish legal data collection tool."""
     logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
+        level=logging.DEBUG if verbose else logging.WARNING,
         format="%(levelname)s %(message)s",
     )
+    if not verbose:
+        logging.getLogger("juris.cli").setLevel(logging.INFO)
+        logging.getLogger("juris.pipeline").setLevel(logging.INFO)
+        logging.getLogger("juris.index").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING if not verbose else logging.DEBUG)
+    logging.getLogger("httpcore").setLevel(logging.WARNING if not verbose else logging.DEBUG)
     ctx.ensure_object(dict)
     ctx.obj["data_dir"] = Path(data_dir)
 

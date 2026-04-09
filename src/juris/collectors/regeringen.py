@@ -117,7 +117,7 @@ class RegeringenCollector(BaseCollector):
             resp.raise_for_status()
             return resp.text
         except (httpx.HTTPError, ValueError) as e:
-            logger.warning("Failed to fetch %s: %s", url, e)
+            logger.warning("Failed to fetch %s: %s", url, e or type(e).__name__)
             return None
 
     # ------------------------------------------------------------------
@@ -332,7 +332,7 @@ class RegeringenCollector(BaseCollector):
 
             if result:
                 new_designation, new_session = result
-                logger.info(
+                logger.debug(
                     "Extracted lagr designation from PDF: %s (session %s)",
                     new_designation,
                     new_session,
@@ -375,7 +375,7 @@ class RegeringenCollector(BaseCollector):
 
             if result:
                 new_designation, new_session = result
-                logger.info(
+                logger.debug(
                     "Extracted DS designation from PDF: %s (session %s)",
                     new_designation,
                     new_session,
@@ -418,7 +418,7 @@ class RegeringenCollector(BaseCollector):
                 params["to"] = until.isoformat()
 
             listing_url = f"{BASE_URL}/rattsliga-dokument/{path}/?{urlencode(params)}"
-            logger.info("Fetching listing page %d: %s", page, listing_url)
+            logger.debug("Fetching listing page %d: %s", page, listing_url)
 
             html = await self._fetch_html(listing_url)
             if not html:
@@ -426,14 +426,14 @@ class RegeringenCollector(BaseCollector):
 
             items = self._parse_listing_page(html)
             if not items:
-                logger.info("No items found on page %d, stopping.", page)
+                logger.debug("No items found on page %d, stopping.", page)
                 break
 
             # Detect pagination loop: if all items on this page were already
             # seen, the site is wrapping around — stop paginating.
             new_on_page = sum(1 for item in items if item["url"] not in seen_urls)
             if new_on_page == 0:
-                logger.info("All items on page %d already seen, stopping.", page)
+                logger.debug("All items on page %d already seen, stopping.", page)
                 break
 
             for item in items:
@@ -444,7 +444,7 @@ class RegeringenCollector(BaseCollector):
                     continue
                 seen_urls.add(item["url"])
 
-                logger.info("Fetching detail: %s", item["title"][:60])
+                logger.debug("Fetching detail: %s", item["title"][:60])
 
                 detail_html = await self._fetch_html(item["url"])
                 if not detail_html:

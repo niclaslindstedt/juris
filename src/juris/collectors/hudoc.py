@@ -78,7 +78,7 @@ class HudocCollector(BaseCollector):
             results: list[dict[str, Any]] = data.get("results", [])
             return results
         except (httpx.HTTPError, ValueError, KeyError) as e:
-            logger.warning("HUDOC search failed: %s", e)
+            logger.warning("HUDOC search failed: %s", e or type(e).__name__)
             return []
 
     def _parse_result(self, item: dict[str, Any]) -> Document | None:
@@ -171,7 +171,7 @@ class HudocCollector(BaseCollector):
 
                 pdf_text = extract_text_from_bytes(resp.content)
                 if pdf_text and len(pdf_text) > 100:
-                    logger.info("Extracted %d chars from HUDOC PDF for %s", len(pdf_text), item_id)
+                    logger.debug("Extracted %d chars from HUDOC PDF for %s", len(pdf_text), item_id)
                     return pdf_text, None
         except httpx.HTTPError as e:
             logger.debug("HUDOC PDF unavailable for %s: %s", item_id, e)
@@ -244,7 +244,7 @@ class HudocCollector(BaseCollector):
         seen_doc_ids: set[str] = set()
 
         while True:
-            logger.info("HUDOC search start=%d", start)
+            logger.debug("HUDOC search start=%d", start)
             results = await self._search(query, start=start, length=PAGE_SIZE)
 
             if not results:
