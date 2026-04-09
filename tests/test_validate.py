@@ -131,7 +131,8 @@ class TestValidateCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(tmp_path / "nonexistent"), "validate"])
         assert result.exit_code == 0
-        assert "No data directory" in result.output
+        # Global debug logging creates the data dir, so validate sees an empty dir.
+        assert "0 documents checked" in result.output
 
     def test_type_filter(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"

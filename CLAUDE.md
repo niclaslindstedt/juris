@@ -42,6 +42,7 @@ tests/
 ├── test_logging.py     # Collection logging tests
 ├── test_report.py      # Report generation, persistence, diff, and CLI tests
 ├── test_help_agent.py  # --help-agent flag tests
+├── test_debug_agent.py # --debug-agent flag tests
 └── test_index.py       # Remote index and update command tests
 docs/
 ├── overview.md         # Project overview and use cases

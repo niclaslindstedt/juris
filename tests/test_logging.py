@@ -20,6 +20,7 @@ from juris.logging import (
     _WarningCapture,
     log_dir_path,
     setup_file_logging,
+    setup_global_debug_logging,
 )
 from juris.models import DocType, Document, Source
 
@@ -334,6 +335,31 @@ class TestSetupFileLogging:
             handler.close()
 
 
+class TestGlobalDebugLogging:
+    """setup_global_debug_logging creates a persistent debug.log."""
+
+    def test_creates_debug_log(self, tmp_path: Path) -> None:
+        handler = setup_global_debug_logging(tmp_path)
+        try:
+            logging.getLogger("test.global_debug").debug("global debug message")
+            handler.flush()
+            log_file = tmp_path / ".logs" / "debug.log"
+            assert log_file.exists()
+            content = log_file.read_text(encoding="utf-8")
+            assert "global debug message" in content
+        finally:
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+
+    def test_handler_level_is_debug(self, tmp_path: Path) -> None:
+        handler = setup_global_debug_logging(tmp_path)
+        try:
+            assert handler.level == logging.DEBUG
+        finally:
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+
+
 class TestLogDirPath:
     """log_dir_path creates the directory."""
 
@@ -361,7 +387,7 @@ class TestLogsCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["--data-dir", str(tmp_path), "logs"])
         assert result.exit_code == 0
-        assert "No logs found" in result.output
+        assert "No log files found" in result.output
 
     def test_list_runs(self, tmp_path: Path) -> None:
         from juris.cli import main
