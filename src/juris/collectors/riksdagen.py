@@ -89,8 +89,9 @@ class RiksdagenCollector(BaseCollector):
             logger.warning("Failed to fetch %s: HTTP %d", url, e.response.status_code)
             return None
         except httpx.HTTPError as e:
-            self._last_fetch_error = type(e).__name__
-            logger.warning("Failed to fetch %s: %s", url, type(e).__name__)
+            detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            self._last_fetch_error = detail
+            logger.warning("Failed to fetch %s: %s", url, detail)
             return None
         except ValueError as e:
             self._last_fetch_error = f"JSON parse error: {e}"

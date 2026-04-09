@@ -317,8 +317,8 @@ async def test_riksdagen_fetch_json_logs_network_error_type(
         result = await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?p=1")
 
     assert result is None
-    assert collector._last_fetch_error == "ConnectError"
-    assert "ConnectError" in caplog.text
+    assert collector._last_fetch_error == "ConnectError: connection refused"
+    assert "ConnectError: connection refused" in caplog.text
     await collector.close()
 
 
