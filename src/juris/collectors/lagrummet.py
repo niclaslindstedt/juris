@@ -307,22 +307,47 @@ class LagrummetCollector(BaseCollector):
                     if session and item["year"] != session:
                         continue
 
+                    if skip_content:
+                        # Build a lightweight Document from listing data alone,
+                        # avoiding the detail page fetch entirely.
+                        designation = f"{item['prefix']} {item['year']}:{item['number']}"
+                        year = int(item["year"])
+                        approx_date = date(year, 1, 1)
+                        if since and approx_date < since:
+                            continue
+                        if until and approx_date > until:
+                            continue
+                        doc = Document(
+                            doc_id=build_doc_id(DocType.FORESKRIFT, designation, item["year"]),
+                            doc_type=DocType.FORESKRIFT,
+                            designation=designation,
+                            session=item["year"],
+                            title=item["title"],
+                            date=approx_date,
+                            source=Source.LAGRUMMET,
+                            source_url=item["url"],
+                            fetched_at=datetime.now(tz=UTC),
+                        )
+                        yield doc
+                        count += 1
+                        continue
+
                     logger.info("Fetching detail: %s", item["title"][:80])
                     detail_html = await self._fetch_html(item["url"])
                     if not detail_html:
                         continue
 
-                    doc = self._parse_detail_page(detail_html, item["url"], agency)
-                    if not doc:
+                    detail_doc = self._parse_detail_page(detail_html, item["url"], agency)
+                    if not detail_doc:
                         continue
 
                     # Filter by date range
-                    if since and doc.date < since:
+                    if since and detail_doc.date < since:
                         continue
-                    if until and doc.date > until:
+                    if until and detail_doc.date > until:
                         continue
 
-                    yield doc
+                    yield detail_doc
                     count += 1
 
                 # Stop pagination for non-paginated agencies or end of results

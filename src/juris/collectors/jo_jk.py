@@ -655,29 +655,65 @@ class JoJkCollector(BaseCollector):
             if limit is not None and count >= limit:
                 return
 
+            # JK with skip_content: build from listing data when we have
+            # enough metadata (designation + date), avoiding detail page fetch.
+            if skip_content and doc_type == DocType.JK and "designation" in item and "date" in item:
+                designation = item["designation"]
+                doc_date = date.fromisoformat(item["date"])
+                year_match = re.match(r"(\d{4})/", designation)
+                item_session = year_match.group(1) if year_match else str(doc_date.year)
+                if session and item_session != session:
+                    continue
+                if since and doc_date < since:
+                    continue
+                if until and doc_date > until:
+                    continue
+                source_id = item["url"].replace(JK_BASE_URL, "")
+                doc = Document(
+                    doc_id=build_doc_id(DocType.JK, designation, item_session),
+                    doc_type=DocType.JK,
+                    designation=designation,
+                    session=item_session,
+                    title=item.get("title", designation),
+                    date=doc_date,
+                    source=Source.JO_JK,
+                    source_id=source_id,
+                    source_url=item["url"],
+                    fetched_at=datetime.now(tz=UTC),
+                )
+                yield doc
+                count += 1
+                continue
+
             detail_html = await self._fetch_html(item["url"])
             if not detail_html:
                 continue
 
             if doc_type == DocType.JO:
-                doc = self._parse_jo_detail_page(detail_html, item["url"])
+                detail_doc = self._parse_jo_detail_page(detail_html, item["url"])
             else:
-                doc = self._parse_jk_detail_page(detail_html, item["url"])
-            if not doc:
+                detail_doc = self._parse_jk_detail_page(detail_html, item["url"])
+            if not detail_doc:
                 continue
 
+            # When skip_content is set, drop text/html to keep the document
+            # lightweight (we only need the metadata for the index).
+            if skip_content:
+                detail_doc.text = None
+                detail_doc.html = None
+
             # Filter by session/year if requested
-            if session and doc.session != session:
+            if session and detail_doc.session != session:
                 continue
 
             # Extra date filtering for detail-page dates (sitemap lastmod
             # is only an approximation)
-            if since and doc.date < since:
+            if since and detail_doc.date < since:
                 continue
-            if until and doc.date > until:
+            if until and detail_doc.date > until:
                 continue
 
-            yield doc
+            yield detail_doc
             count += 1
 
     async def get_document(self, source_id: str) -> Document | None:
