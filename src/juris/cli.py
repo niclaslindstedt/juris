@@ -19,6 +19,7 @@ from juris.collectors import (
     get_registry,
     get_searchable_sources,
 )
+from juris.index import RemoteIndex, UpdateProgress, count_local, count_missing, update_index
 from juris.logging import CollectionLogger, CompositeProgress, log_dir_path, setup_file_logging
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
@@ -731,6 +732,207 @@ def collect_all(
         f"\nReport: {rpt.total_documents} documents across "
         f"{rpt.total_doc_types} types (saved to {report_path})"
     )
+
+
+# ---------------------------------------------------------------------------
+# update command
+# ---------------------------------------------------------------------------
+
+
+class _UpdateTracker(UpdateProgress):
+    """CLI progress reporter for update command."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self._count = 0
+        self._last_line_len = 0
+
+    def on_found(self, doc_id: str) -> None:
+        self._count += 1
+        line = f"\r  {self.label}: {self._count} found"
+        padded = line.ljust(self._last_line_len)
+        self._last_line_len = len(line)
+        click.echo(padded, nl=False)
+
+    def on_finish(self) -> None:
+        click.echo()  # newline after progress
+
+
+def _display_update_summary(
+    results: list[tuple[str, str, RemoteIndex]],
+    data_dir: Path,
+) -> None:
+    """Print a remote vs local summary table."""
+    click.echo()
+    hdr = f"  {'Type':<14s} {'Source':<12s} {'Remote':>8s}  {'Local':>8s}  {'Missing':>8s}"
+    click.echo(hdr)
+    click.echo(f"  {'─' * 56}")
+
+    total_remote = 0
+    total_local = 0
+    total_missing = 0
+
+    for doc_type_val, source_name, index in results:
+        remote = index.total_entries
+        local = count_local(index.doc_type, data_dir)
+        missing = count_missing(index, data_dir)
+        total_remote += remote
+        total_local += local
+        total_missing += missing
+        click.echo(
+            f"  {doc_type_val:<14s} {source_name:<12s} {remote:>8,}  {local:>8,}  {missing:>8,}"
+        )
+
+    click.echo(f"  {'─' * 56}")
+    click.echo(
+        f"  {'Total':<14s} {'':12s} {total_remote:>8,}  {total_local:>8,}  {total_missing:>8,}"
+    )
+
+
+@main.command()
+@click.option(
+    "--type",
+    "doc_type",
+    default=None,
+    type=click.Choice([dt.value for dt in DocType]),
+    help="Only update index for this document type.",
+)
+@click.option(
+    "--source",
+    default=None,
+    type=click.Choice(_COLLECTOR_NAMES),
+    help="Use this specific source (default: preferred provider).",
+)
+@click.option("--since", default=None, help="Only index documents from this date (YYYY-MM-DD).")
+@click.option("--until", default=None, help="Only index documents until this date (YYYY-MM-DD).")
+@click.option("--limit", default=None, type=int, help="Maximum documents to enumerate per type.")
+@click.option("--dry-run", is_flag=True, help="Show the update plan, then exit.")
+@click.option(
+    "--concurrent/--sequential",
+    default=False,
+    help="Run independent sources concurrently.",
+)
+@click.option(
+    "--max-concurrency",
+    default=4,
+    type=int,
+    help="Maximum concurrent update tasks (default 4).",
+)
+@click.pass_context
+def update(
+    ctx: click.Context,
+    doc_type: str | None,
+    source: str | None,
+    since: str | None,
+    until: str | None,
+    limit: int | None,
+    dry_run: bool,
+    concurrent: bool,
+    max_concurrency: int,
+) -> None:
+    """Update the remote document index.
+
+    Enumerates documents available on remote sources without downloading
+    content.  After updating, shows a summary of remote vs local counts
+    so you can see what you have and what you're missing.
+
+    \b
+    Examples:
+      juris update                       # update all types
+      juris update --type prop           # update only propositioner
+      juris update --type nja --limit 50 # quick partial update
+      juris update --dry-run             # preview the plan
+    """
+    data_dir: Path = ctx.obj["data_dir"]
+    preferred_providers = get_preferred_providers()
+    doc_type_providers = get_doc_type_providers()
+
+    # Build plan
+    plan: list[tuple[DocType, str]] = []
+    if doc_type:
+        dt = DocType(doc_type)
+        if source:
+            collector_cls = get_collector_class(source)
+            if dt not in collector_cls.supported_doc_types:
+                supported = ", ".join(t.value for t in collector_cls.supported_doc_types)
+                raise click.UsageError(
+                    f"Source '{source}' does not support type '{doc_type}'. Supported: {supported}"
+                )
+            plan.append((dt, source))
+        else:
+            src = preferred_providers.get(doc_type)
+            if not src:
+                raise click.UsageError(f"No preferred provider for '{doc_type}'.")
+            plan.append((dt, src))
+    else:
+        for dt in DocType:
+            src = preferred_providers.get(dt.value)
+            if src:
+                plan.append((dt, src))
+            else:
+                logger.warning("No preferred provider for %s, skipping", dt.value)
+
+    if dry_run:
+        click.echo("Update plan (sources to enumerate):\n")
+        for dt, src_name in plan:
+            alt = [p for p in doc_type_providers.get(dt.value, []) if p != src_name]
+            alt_str = f"  (also: {', '.join(alt)})" if alt else ""
+            click.echo(f"  {dt.value:14s} <- {src_name}{alt_str}")
+        click.echo(f"\n{len(plan)} document types across {len({s for _, s in plan})} providers")
+        return
+
+    click.echo(
+        f"Updating remote index for {len(plan)} document type(s) "
+        f"from {len({s for _, s in plan})} provider(s)"
+    )
+
+    results: list[tuple[str, str, RemoteIndex]] = []
+
+    if concurrent:
+        click.echo(f"Mode: concurrent (max {max_concurrency} parallel tasks)")
+
+        async def _run_concurrent() -> None:
+            semaphore = asyncio.Semaphore(max_concurrency)
+
+            async def _update_one(dt: DocType, src_name: str) -> None:
+                async with semaphore:
+                    click.echo(f"  Starting {dt.value} <- {src_name}")
+                    tracker = _UpdateTracker(f"{src_name}/{dt.value}")
+                    index = await update_index(
+                        src_name,
+                        dt,
+                        data_dir,
+                        since=_parse_date(since),
+                        until=_parse_date(until),
+                        limit=limit,
+                        progress=tracker,
+                    )
+                    results.append((dt.value, src_name, index))
+
+            tasks = [_update_one(dt, src_name) for dt, src_name in plan]
+            await asyncio.gather(*tasks)
+
+        asyncio.run(_run_concurrent())
+    else:
+
+        async def _run_sequential() -> None:
+            for i, (dt, src_name) in enumerate(plan, 1):
+                click.echo(f"\n[{i}/{len(plan)}] {dt.value} <- {src_name}")
+                tracker = _UpdateTracker(f"{src_name}/{dt.value}")
+                index = await update_index(
+                    src_name,
+                    dt,
+                    data_dir,
+                    since=_parse_date(since),
+                    until=_parse_date(until),
+                    limit=limit,
+                    progress=tracker,
+                )
+                results.append((dt.value, src_name, index))
+
+        asyncio.run(_run_sequential())
+
+    _display_update_summary(results, data_dir)
 
 
 # ---------------------------------------------------------------------------
