@@ -122,6 +122,12 @@ class UpdateProgress:
     def on_found(self, doc_id: str) -> None:
         """Called when a remote document is discovered."""
 
+    def on_total(self, total: int) -> None:
+        """Called when the API-reported total becomes known."""
+
+    def on_status(self, message: str) -> None:
+        """Called on phase transitions (e.g. 'saving index')."""
+
     def on_finish(self) -> None:
         """Called when enumeration ends."""
 
@@ -153,6 +159,7 @@ async def update_index(
     seen_ids: set[str] = set()
     complete = True
     error_msg: str | None = None
+    total_reported = False
 
     try:
         async for doc in collector.collect(
@@ -167,16 +174,22 @@ async def update_index(
             seen_ids.add(doc.doc_id)
             entries.append(_doc_to_entry(doc))
             if progress:
+                if not total_reported and collector.total_available is not None:
+                    progress.on_total(collector.total_available)
+                    total_reported = True
                 progress.on_found(doc.doc_id)
     except Exception as exc:
         complete = False
         error_msg = str(exc)
         logger.exception("Error enumerating %s/%s", source_name, dt.value)
+        if progress:
+            progress.on_status("error")
     finally:
         total_available = collector.total_available
-        if progress:
-            progress.on_finish()
         await collector.close()
+
+    if progress:
+        progress.on_status("saving index")
 
     index = RemoteIndex(
         source=Source(source_name),
@@ -187,6 +200,11 @@ async def update_index(
         error=error_msg,
     )
     save_index(index, base_dir)
+
+    if progress:
+        progress.on_status("done")
+        progress.on_finish()
+
     return index
 
 
