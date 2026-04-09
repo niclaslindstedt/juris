@@ -1,90 +1,81 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { DOC_PAGES } from "../data/sourceData";
-import { renderMarkdown } from "./markdown";
+import { docs, getDocBySlug } from "../data/docs";
+import MarkdownRenderer from "./MarkdownRenderer";
 
-const PAGE_ORDER = [
-  "overview",
-  "architecture",
-  "collectors",
-  "document-model",
-  "storage-format",
-  "data-sources",
-  "parsing-rules",
-];
+export default function Documentation() {
+  const { slug } = useParams<{ slug: string }>();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-const PAGE_LABELS: Record<string, string> = {
-  overview: "Overview",
-  architecture: "Architecture",
-  collectors: "Collectors",
-  "document-model": "Document Model",
-  "storage-format": "Storage Format",
-  "data-sources": "Data Sources",
-  "parsing-rules": "Parsing Rules",
-};
+  const currentSlug = slug || "overview";
+  const currentDoc = getDocBySlug(currentSlug);
 
-const pages = DOC_PAGES.map((p) => ({ slug: p.slug }));
-
-export default function DocumentationPage() {
-  const { slug: urlSlug } = useParams();
-  const navigate = useNavigate();
-
-  const sorted = PAGE_ORDER.map((slug) => DOC_PAGES.find((p) => p.slug === slug)).filter(
-    (p): p is NonNullable<typeof p> => p != null,
-  );
-
-  const [active, setActive] = useState(urlSlug ?? sorted[0]?.slug ?? "overview");
-  const page = sorted.find((p) => p.slug === active) ?? sorted[0];
-
-  // Sync URL param to active state
   useEffect(() => {
-    if (urlSlug && sorted.some((p) => p.slug === urlSlug)) {
-      setActive(urlSlug);
-    }
-  }, [urlSlug, sorted]);
+    window.scrollTo(0, 0);
+  }, [currentSlug]);
 
-  function handleNavigate(slug: string) {
-    setActive(slug);
-    navigate(`/docs/${slug}`, { replace: true });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  if (!currentDoc) {
+    return <Navigate to="/docs/overview" replace />;
   }
 
   return (
-    <div className="pt-24 pb-20 px-6">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Documentation</h1>
-          <p className="text-text-secondary">
-            Concepts, architecture, and guides for understanding how juris works.
-          </p>
-        </div>
+    <div className="min-h-screen pt-[73px]">
+      {/* Mobile sidebar toggle */}
+      <div className="sticky top-[73px] z-40 border-b border-border bg-surface/95 backdrop-blur-sm px-4 py-3 lg:hidden">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d={sidebarOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+          </svg>
+          {currentDoc.title}
+        </button>
+      </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar */}
-          <nav className="lg:w-48 shrink-0">
-            <div className="lg:sticky lg:top-24 flex lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0">
-              {sorted.map((p) => (
-                <button
-                  key={p.slug}
-                  onClick={() => handleNavigate(p.slug)}
-                  className={`text-left text-sm font-mono px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
-                    active === p.slug
-                      ? "bg-accent/15 text-accent border border-accent/30"
-                      : "text-text-secondary hover:text-text-primary hover:bg-surface-200"
-                  }`}
-                >
-                  {PAGE_LABELS[p.slug] ?? p.title}
-                </button>
-              ))}
-            </div>
+      {/* Backdrop for mobile sidebar */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <div className="mx-auto flex max-w-7xl">
+        {/* Sidebar */}
+        <aside
+          className={`
+            fixed top-[118px] bottom-0 z-40 w-full shrink-0 overflow-y-auto border-r border-border bg-surface px-4 py-6
+            transition-transform duration-200 ease-in-out
+            sm:w-72
+            lg:sticky lg:top-[73px] lg:w-64 lg:translate-x-0 lg:block
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          `}
+        >
+          <nav className="space-y-1">
+            {docs.map((doc) => (
+              <Link
+                key={doc.slug}
+                to={`/docs/${doc.slug}`}
+                onClick={() => setSidebarOpen(false)}
+                className={`
+                  block rounded-md px-3 py-2 text-sm transition-colors
+                  ${doc.slug === currentSlug
+                    ? "bg-accent/10 text-accent font-medium"
+                    : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                  }
+                `}
+              >
+                {doc.title}
+              </Link>
+            ))}
           </nav>
+        </aside>
 
-          {/* Content */}
-          <div className="flex-1 min-w-0 rounded-xl border border-border bg-surface-100/50 p-6 md:p-8">
-            <h2 className="text-2xl font-bold font-mono text-accent mb-2">{page.title}</h2>
-            {renderMarkdown(page.content, handleNavigate, pages)}
-          </div>
-        </div>
+        {/* Main content */}
+        <main className="min-w-0 flex-1 px-6 py-8 lg:px-12 lg:py-10">
+          <MarkdownRenderer content={currentDoc.content} />
+        </main>
       </div>
     </div>
   );

@@ -1,62 +1,77 @@
-const FEATURES = [
+import { SOURCES, DOC_TYPES } from "../data/sourceData";
+
+const features = [
   {
-    icon: "🏛",
-    title: "8 Data Sources",
+    title: `${SOURCES.length} Official Sources`,
     description:
-      "Parliament, government, courts, ombudsmen, agencies, and EU institutions. JSON APIs, REST endpoints, SPARQL, and web scraping.",
+      `Collects from ${SOURCES.map((s) => s.description.split(" ")[0]).slice(0, 4).join(", ")}, and more. Each source has a dedicated async collector with rate limiting and incremental state.`,
+    icon: "\uD83C\uDDF8\uD83C\uDDEA",
   },
   {
-    icon: "📜",
-    title: "21 Document Types",
+    title: `${DOC_TYPES.length} Document Types`,
     description:
-      "Bills, motions, inquiries, court decisions, regulations, EU directives, and more. Every type of Swedish legal document.",
+      "Government bills, court decisions, EU regulations, ombudsman rulings, and more \u2014 all normalized into a unified schema with Pydantic validation.",
+    icon: "\uD83D\uDCDC",
   },
   {
-    icon: "📄",
-    title: "Dual Output Format",
+    title: "AI-Powered via zag",
     description:
-      "JSON for machines, Markdown with YAML frontmatter for humans. Browse documents directly on GitHub.",
+      "Built on zag\u2019s agent orchestration layer. AI agents parse complex legal documents, extract structured data, and handle edge cases intelligently.",
+    icon: "\u26A1",
   },
   {
-    icon: "⏩",
+    title: "Git-Friendly Output",
+    description:
+      "Every document is stored as JSON (machine-readable) + Markdown with YAML frontmatter (human-readable). Clean diffs, easy version control.",
+    icon: "\uD83D\uDCC1",
+  },
+  {
     title: "Incremental Collection",
     description:
-      "State tracking resumes where you left off. Skip already-collected documents automatically.",
+      "State tracking per source and document type. Only fetches new and updated documents. Resume interrupted collections seamlessly.",
+    icon: "\uD83D\uDD04",
   },
   {
-    icon: "⚡",
-    title: "Async I/O & Rate Limiting",
-    description:
-      "Built on httpx with configurable rate limits. Respects source servers with exponential backoff and retry.",
-  },
-  {
-    icon: "📎",
     title: "PDF Text Extraction",
     description:
-      "Automatically downloads PDF attachments and extracts full text via pymupdf. Falls back gracefully.",
+      "Automatic text extraction from PDF attachments via pymupdf. Handles scanned documents and complex legal formatting.",
+    icon: "\uD83D\uDCC4",
+  },
+  {
+    title: "Async & Rate-Limited",
+    description:
+      "Fully async I/O with httpx. Built-in rate limiting respects each source\u2019s API constraints. Parallel collection across sources.",
+    icon: "\uD83D\uDE80",
+  },
+  {
+    title: "Coverage Reports",
+    description:
+      "Track collection completeness over time. Diff reports show what\u2019s new, what\u2019s changed, and what\u2019s missing across all sources.",
+    icon: "\uD83D\uDCCA",
   },
 ];
 
 export default function Features() {
   return (
-    <section id="features" className="py-20 px-6">
-      <div className="mx-auto max-w-6xl">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Features</h2>
-        <p className="text-text-secondary text-center mb-12 max-w-2xl mx-auto">
-          Everything you need to build a comprehensive, version-controlled database of Swedish law.
+    <section id="features" className="border-t border-border py-20 md:py-28">
+      <div className="mx-auto max-w-6xl px-6">
+        <h2 className="text-center text-3xl font-bold text-text-primary md:text-4xl">
+          Everything you need for Swedish legal data
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-center text-text-secondary">
+          A unified pipeline that collects, parses, normalizes, and stores legal documents from
+          official Swedish and EU sources.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {FEATURES.map((feature) => (
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map((f) => (
             <div
-              key={feature.title}
-              className="p-6 rounded-xl border border-border hover:border-border-visible bg-surface-100 hover:bg-surface-200 transition-all"
+              key={f.title}
+              className="group rounded-xl border border-border bg-surface-alt p-6 transition-all hover:border-accent/40 hover:bg-surface-hover"
             >
-              <div className="text-2xl mb-3">{feature.icon}</div>
-              <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-              <p className="text-text-secondary text-sm leading-relaxed">
-                {feature.description}
-              </p>
+              <div className="mb-4 text-2xl">{f.icon}</div>
+              <h3 className="mb-2 text-lg font-semibold text-text-primary">{f.title}</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">{f.description}</p>
             </div>
           ))}
         </div>

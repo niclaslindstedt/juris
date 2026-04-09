@@ -58,13 +58,23 @@ scripts/
 ├── release.sh          # Semantic version bump + tag creation
 ├── update-version.sh   # Updates version in pyproject.toml
 └── generate-changelog.sh # Changelog generation from conventional commits
-website/                # GitHub Pages website (React + Vite + Tailwind)
+website/                # GitHub Pages website — "zig" branding (React + Vite + Tailwind)
 ├── scripts/
 │   └── extract-data.ts # Extracts data from Python source → sourceData.ts
 ├── src/
-│   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, Documentation, etc.)
+│   ├── components/     # React components
+│   │   ├── Navbar.tsx, Hero.tsx, Features.tsx, Sources.tsx, DocTypes.tsx
+│   │   ├── ZagRelationship.tsx, CodeExamples.tsx, GettingStarted.tsx, Footer.tsx
+│   │   ├── DocumentationPage.tsx, ManualPage.tsx, MarkdownRenderer.tsx, CodeBlock.tsx
+│   │   └── terminal/   # Animated terminal (TerminalShell, TerminalLine, CommandHighlighter)
+│   ├── hooks/
+│   │   └── useTerminalAnimation.ts  # Typing animation hook for terminal demos
 │   └── data/
-│       └── sourceData.ts # AUTO-GENERATED from Python source
+│       ├── sourceData.ts    # AUTO-GENERATED from Python source
+│       ├── logStyles.ts     # Terminal line style definitions
+│       ├── terminalDemos.ts # Terminal demo sequences (collect, search, multi-source, report)
+│       ├── docs.ts          # Documentation pages (imported from docs/*.md via ?raw)
+│       └── manpages.ts      # Manual pages (imported from man/*.md via ?raw)
 ├── package.json
 └── vite.config.ts
 .github/workflows/
@@ -72,6 +82,7 @@ website/                # GitHub Pages website (React + Vite + Tailwind)
 ├── release.yml         # Build + publish to PyPI on tag push
 ├── version-bump.yml    # Manual workflow_dispatch to bump version
 ├── deploy-website.yml  # Build + deploy GitHub Pages website
+├── sync-website-data.yml # Auto-sync sourceData.ts when Python source changes
 └── e2e-*.yml           # Per-document-type E2E test workflows
 ```
 

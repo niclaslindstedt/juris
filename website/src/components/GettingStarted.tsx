@@ -1,87 +1,73 @@
-import { useState } from "react";
-
-const STEPS = [
+const methods = [
   {
-    title: "Install",
-    code: `pip install juris`,
+    title: "From PyPI",
+    command: "pip install juris",
+    note: "Requires Python 3.11+",
   },
   {
-    title: "Collect",
-    code: `# Collect government bills from the current session
-juris collect riksdagen --type prop --session 2024/25
-
-# Or use the best provider automatically
-juris collect-type sou --since 2024-01-01
-
-# Collect everything
-juris collect-all`,
+    title: "From source",
+    command: "git clone https://github.com/niclaslindstedt/juris\ncd juris && pip install -e '.[dev]'",
+    note: "Build from latest source",
   },
   {
-    title: "Browse",
-    code: `data/
-├── prop/
-│   └── 2024-25/
-│       ├── prop-2024-25_208.json
-│       └── prop-2024-25_208.md
-├── sou/
-│   └── 2024/
-│       ├── sou-2024_12.json
-│       └── sou-2024_12.md
-└── ...`,
+    title: "With uv",
+    command: "uv pip install juris",
+    note: "Fast install with uv",
   },
 ];
 
 export default function GettingStarted() {
-  const [copied, setCopied] = useState<number | null>(null);
-
-  function copyToClipboard(text: string, index: number) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(index);
-      setTimeout(() => setCopied(null), 2000);
-    });
-  }
-
   return (
-    <section id="getting-started" className="py-20 px-6 bg-surface-100/50">
-      <div className="mx-auto max-w-3xl">
-        <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-          Getting Started
+    <section id="get-started" className="border-t border-border bg-surface-alt py-20 md:py-28">
+      <div className="mx-auto max-w-5xl px-6">
+        <h2 className="text-center text-3xl font-bold text-text-primary md:text-4xl">
+          Get started in seconds
         </h2>
-        <p className="text-text-secondary text-center mb-12">
-          Three steps to start building your Swedish law database.
+        <p className="mx-auto mt-4 max-w-xl text-center text-text-secondary">
+          Install zig, then start collecting Swedish legal documents.
         </p>
 
-        <div className="space-y-6">
-          {STEPS.map((step, i) => (
-            <div key={step.title}>
-              <div className="flex items-center gap-3 mb-3">
-                <span className="w-7 h-7 rounded-full bg-accent/15 text-accent text-sm font-bold flex items-center justify-center">
-                  {i + 1}
-                </span>
-                <h3 className="font-semibold text-lg">{step.title}</h3>
-              </div>
-              <div className="relative group">
-                <pre className="bg-surface rounded-xl border border-border p-4 overflow-x-auto font-mono text-sm text-text-secondary leading-relaxed">
-                  <code>{step.code}</code>
-                </pre>
-                <button
-                  onClick={() => copyToClipboard(step.code, i)}
-                  className="absolute top-3 right-3 p-1.5 rounded-md bg-surface-200 border border-border text-text-dim hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Copy to clipboard"
-                >
-                  {copied === i ? (
-                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
+        {/* Install methods */}
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {methods.map((m) => (
+            <div key={m.title} className="rounded-xl border border-border bg-surface p-5">
+              <h3 className="mb-1 text-sm font-semibold text-text-primary">{m.title}</h3>
+              <p className="mb-3 text-xs text-text-dim">{m.note}</p>
+              <pre className="overflow-x-auto rounded-lg bg-surface-alt p-3 text-xs leading-relaxed text-accent">
+                <code>{m.command}</code>
+              </pre>
             </div>
           ))}
+        </div>
+
+        {/* Prerequisites */}
+        <div className="mt-12">
+          <h3 className="mb-4 text-center text-lg font-semibold text-text-primary">
+            Prerequisites
+          </h3>
+          <div className="mx-auto max-w-2xl space-y-2">
+            {[
+              { name: "Python 3.11+", cmd: "python3 --version" },
+              { name: "zag CLI", cmd: "cargo install zag-cli" },
+              { name: "pymupdf (optional)", cmd: "pip install pymupdf" },
+            ].map((p) => (
+              <div key={p.name} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border bg-surface px-4 py-2.5">
+                <span className="text-sm font-medium text-text-secondary">{p.name}</span>
+                <code className="text-xs text-text-dim">{p.cmd}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick verify */}
+        <div className="mx-auto mt-12 max-w-lg rounded-xl border border-border bg-surface p-5">
+          <p className="mb-3 text-center text-sm text-text-secondary">Verify your installation:</p>
+          <pre className="overflow-x-auto text-sm text-text-secondary">
+            <code>
+              <span className="text-accent">$</span> zig collect prop --limit 1{"\n"}
+              <span className="text-[#4ade80]">{"\u2713"}</span> Collected 1 document to data/prop/
+            </code>
+          </pre>
         </div>
       </div>
     </section>

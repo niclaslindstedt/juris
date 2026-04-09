@@ -1,0 +1,55 @@
+name: Sync Website Data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/juris/models.py"
+      - "src/juris/collectors/**"
+      - "man/**"
+      - "docs/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Extract source data
+        working-directory: website
+        run: npm run extract
+
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff --quiet website/src/data/sourceData.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit updated sourceData.ts
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add website/src/data/sourceData.ts
+          git commit -m "chore: sync website sourceData.ts from Python source"
+          git push

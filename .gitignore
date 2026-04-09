@@ -10,3 +10,6 @@ build/
 
 # Collected data (generated at runtime)
 data/
+
+# But keep website source data
+!website/src/data/
