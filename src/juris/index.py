@@ -37,6 +37,9 @@ class RemoteIndex(BaseModel):
     doc_type: DocType
     entries: list[RemoteEntry] = []
     total_entries: int = 0
+    total_available: int | None = None  # API-reported total (if source provides it)
+    complete: bool = True  # False if enumeration was interrupted or errored
+    error: str | None = None  # Error message if enumeration failed
     updated_at: str | None = None
 
 
@@ -138,11 +141,18 @@ async def update_index(
     Calls the collector with ``skip_content=True`` to enumerate documents
     without downloading full content. Saves the resulting index to disk.
 
+    If enumeration completes normally, ``complete`` is ``True``.
+    If an error occurs mid-enumeration, the partial index is saved with
+    ``complete=False`` and the error message recorded.
+    If the user cancels (Ctrl+C), no index is saved.
+
     Returns the built :class:`RemoteIndex`.
     """
     collector = get_collector_class(source_name)()
     entries: list[RemoteEntry] = []
     seen_ids: set[str] = set()
+    complete = True
+    error_msg: str | None = None
 
     try:
         async for doc in collector.collect(
@@ -158,9 +168,12 @@ async def update_index(
             entries.append(_doc_to_entry(doc))
             if progress:
                 progress.on_found(doc.doc_id)
-    except Exception:
+    except Exception as exc:
+        complete = False
+        error_msg = str(exc)
         logger.exception("Error enumerating %s/%s", source_name, dt.value)
     finally:
+        total_available = collector.total_available
         if progress:
             progress.on_finish()
         await collector.close()
@@ -169,6 +182,9 @@ async def update_index(
         source=Source(source_name),
         doc_type=dt,
         entries=entries,
+        total_available=total_available,
+        complete=complete,
+        error=error_msg,
     )
     save_index(index, base_dir)
     return index

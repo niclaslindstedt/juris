@@ -104,6 +104,9 @@ class TestModels:
         idx = RemoteIndex(source=Source.RIKSDAGEN, doc_type=DocType.PROP)
         assert idx.entries == []
         assert idx.total_entries == 0
+        assert idx.total_available is None
+        assert idx.complete is True
+        assert idx.error is None
         assert idx.updated_at is None
 
     def test_remote_index_roundtrip(self) -> None:
@@ -113,6 +116,21 @@ class TestModels:
         assert len(loaded.entries) == 2
         assert loaded.source == Source.RIKSDAGEN
         assert loaded.doc_type == DocType.PROP
+
+    def test_remote_index_incomplete(self) -> None:
+        idx = RemoteIndex(
+            source=Source.RIKSDAGEN,
+            doc_type=DocType.PROP,
+            entries=[_make_entry()],
+            total_available=500,
+            complete=False,
+            error="Connection timeout",
+        )
+        data = idx.model_dump(mode="json")
+        loaded = RemoteIndex.model_validate(data)
+        assert loaded.total_available == 500
+        assert loaded.complete is False
+        assert loaded.error == "Connection timeout"
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +309,7 @@ class TestUpdateCli:
             doc_type=DocType.PROP,
             entries=[_make_entry()],
             total_entries=1,
+            total_available=100,
             updated_at="2026-04-09T00:00:00+00:00",
         )
         mock_update.return_value = mock_index
@@ -302,7 +321,35 @@ class TestUpdateCli:
             catch_exceptions=False,
         )
         assert result.exit_code == 0
-        assert "Remote" in result.output
+        assert "Indexed" in result.output
+        assert "Expected" in result.output
         assert "Local" in result.output
         assert "Missing" in result.output
         mock_update.assert_called_once()
+
+    @patch("juris.cli.update_index")
+    def test_update_shows_incomplete_warning(self, mock_update: AsyncMock, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        mock_index = RemoteIndex(
+            source=Source.RIKSDAGEN,
+            doc_type=DocType.PROP,
+            entries=[_make_entry()],
+            total_entries=1,
+            total_available=500,
+            complete=False,
+            error="Connection timeout",
+            updated_at="2026-04-09T00:00:00+00:00",
+        )
+        mock_update.return_value = mock_index
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--data-dir", str(data_dir), "update", "--type", "prop"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "Incomplete" in result.output
+        assert "Connection timeout" in result.output

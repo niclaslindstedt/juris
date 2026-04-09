@@ -764,13 +764,17 @@ def _display_update_summary(
 ) -> None:
     """Print a remote vs local summary table."""
     click.echo()
-    hdr = f"  {'Type':<14s} {'Source':<12s} {'Remote':>8s}  {'Local':>8s}  {'Missing':>8s}"
+    hdr = (
+        f"  {'Type':<14s} {'Source':<12s} {'Indexed':>8s}"
+        f"  {'Expected':>9s}  {'Local':>8s}  {'Missing':>8s}"
+    )
     click.echo(hdr)
-    click.echo(f"  {'─' * 56}")
+    click.echo(f"  {'─' * 67}")
 
     total_remote = 0
     total_local = 0
     total_missing = 0
+    incomplete: list[tuple[str, str, str]] = []
 
     for doc_type_val, source_name, index in results:
         remote = index.total_entries
@@ -779,14 +783,33 @@ def _display_update_summary(
         total_remote += remote
         total_local += local
         total_missing += missing
+
+        if index.total_available is not None:
+            expected = f"{index.total_available:>,}"
+        else:
+            expected = "—"
+
+        warn = ""
+        if not index.complete:
+            warn = " *"
+            incomplete.append((doc_type_val, source_name, index.error or "unknown error"))
+
         click.echo(
-            f"  {doc_type_val:<14s} {source_name:<12s} {remote:>8,}  {local:>8,}  {missing:>8,}"
+            f"  {doc_type_val:<14s} {source_name:<12s} {remote:>8,}"
+            f"  {expected:>9s}  {local:>8,}  {missing:>8,}{warn}"
         )
 
-    click.echo(f"  {'─' * 56}")
+    click.echo(f"  {'─' * 67}")
     click.echo(
-        f"  {'Total':<14s} {'':12s} {total_remote:>8,}  {total_local:>8,}  {total_missing:>8,}"
+        f"  {'Total':<14s} {'':12s} {total_remote:>8,}"
+        f"  {'':>9s}  {total_local:>8,}  {total_missing:>8,}"
     )
+
+    if incomplete:
+        click.echo()
+        click.echo(click.style("  Incomplete indexes (*):", fg="yellow"))
+        for dt_val, src, err in incomplete:
+            click.echo(f"    {dt_val} ({src}): {err}")
 
 
 @main.command()
