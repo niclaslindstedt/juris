@@ -342,6 +342,7 @@ class RiksdagenCollector(BaseCollector):
 
         url = f"{BASE_URL}/dokumentlista/?" + "&".join(f"{k}={v}" for k, v in params.items())
         prev_url: str | None = None
+        first_page = True  # True until we follow the first @nasta_sida link
 
         while url:
             data = await self._fetch_json(url)
@@ -397,16 +398,27 @@ class RiksdagenCollector(BaseCollector):
             # points to the same or earlier page, creating an infinite loop.
             next_url = doc_list.get("@nasta_sida")
             if next_url and (not limit or count < limit):
-                current_page = self._extract_page(url)
-                next_page = self._extract_page(next_url)
-                if current_page is not None and next_page is not None and next_page <= current_page:
-                    logger.info(
-                        "Pagination loop detected: page %d -> %d. Stopping after %d documents.",
-                        current_page,
-                        next_page,
-                        count,
-                    )
-                    break
+                # Skip loop detection on the first page transition when resuming
+                # with sida > 1: the initial URL uses ``sida`` for page numbering
+                # while @nasta_sida uses ``p``, so comparing them cross-scheme
+                # falsely triggers loop detection (e.g. sida=31 vs p=2).
+                if first_page and start_sida > 1:
+                    first_page = False
+                else:
+                    current_page = self._extract_page(url)
+                    next_page = self._extract_page(next_url)
+                    if (
+                        current_page is not None
+                        and next_page is not None
+                        and next_page <= current_page
+                    ):
+                        logger.info(
+                            "Pagination loop detected: page %d -> %d. Stopping after %d documents.",
+                            current_page,
+                            next_page,
+                            count,
+                        )
+                        break
                 prev_url = url
                 url = next_url
             else:

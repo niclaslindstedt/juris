@@ -263,6 +263,7 @@ async def update_index(
     error_msg: str | None = None
     total_reported = False
     phase1_ok = False
+    phase1_new = 0  # new entries discovered during phase 1
 
     page_num = len(pages)
     page_doc_ids: list[str] = []
@@ -299,6 +300,7 @@ async def update_index(
                 entries.append(_doc_to_entry(doc))
                 index.entries = entries
                 page_indexed += 1
+                phase1_new += 1
                 consecutive_dups = 0
                 if progress:
                     progress.on_found(doc.doc_id)
@@ -464,8 +466,33 @@ async def update_index(
             return index
 
     # ------------------------------------------------------------------
-    # Done — mark complete
+    # Done — mark complete (only if enumeration actually covered the source)
     # ------------------------------------------------------------------
+    # Safety check: if we were resuming and phase 1 found nothing new, but
+    # total_available is much larger than our entries, the resume likely
+    # failed (e.g. offset-based pagination didn't work).  Keep the index
+    # incomplete so the next run can retry.
+    if (
+        resuming
+        and phase1_new == 0
+        and index.total_available
+        and len(entries) < index.total_available * 0.5
+    ):
+        logger.warning(
+            "Resume of %s/%s found 0 new entries but only %d/%d indexed — "
+            "keeping incomplete for retry",
+            source_name,
+            dt.value,
+            len(entries),
+            index.total_available,
+        )
+        index.error = "resume stalled — offset-based pagination may have failed"
+        save_index(index, base_dir)
+        if progress:
+            progress.on_status("incomplete")
+            progress.on_finish()
+        return index
+
     index.complete = True
     index.error = None
     index.resume_offset = 0
