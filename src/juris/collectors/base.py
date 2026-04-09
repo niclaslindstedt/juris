@@ -153,7 +153,11 @@ class BaseCollector(ABC):
                 )
                 await asyncio.sleep(delay)
 
-            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            except (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                httpx.ReadError,
+            ) as exc:
                 last_exc = exc
                 if attempt == self._max_retries:
                     raise
@@ -257,7 +261,7 @@ class BaseCollector(ABC):
                             pass
                         raise
                 return True
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as e:
                 last_exc = e
                 if attempt < self._max_retries:
                     delay = self._backoff_base * (self._backoff_factor**attempt)
