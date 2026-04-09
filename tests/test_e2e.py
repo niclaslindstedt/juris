@@ -14,9 +14,11 @@ import pytest
 from tests.conftest import (
     assert_document_quality,
     assert_markdown_valid,
+    load_index,
     load_saved_documents,
     load_saved_markdown,
     run_collect,
+    run_update,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,6 +108,18 @@ class TestRiksdagenE2E:
         for doc in docs:
             assert_document_quality(doc, expected_type="bet")
 
+    @pytest.mark.parametrize("doc_type", ["prop", "sou", "mot", "bet", "dir", "skr", "sfs"])
+    def test_update_index(self, cli_runner, tmp_data_dir, doc_type):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, doc_type, limit=3)
+        idx = load_index(tmp_data_dir, "riksdagen", doc_type)
+        assert idx is not None, f"No index file saved for {doc_type}"
+        assert idx["source"] == "riksdagen"
+        assert idx["doc_type"] == doc_type
+        assert len(idx["entries"]) >= 1, f"No entries indexed for {doc_type}"
+        assert idx["updated_at"] is not None
+        assert "Indexed" in result.output
+
     def test_sfs_designation_split(self, cli_runner, tmp_data_dir):
         """SFS documents should have year as session, number as designation."""
         run_collect(
@@ -148,6 +162,17 @@ class TestRegeringenE2E:
         md_files = load_saved_markdown(tmp_data_dir, doc_type)
         assert len(md_files) >= 1
         assert_markdown_valid(md_files[0])
+
+    @pytest.mark.parametrize("doc_type", ["ds", "lagr"])
+    def test_update_index(self, cli_runner, tmp_data_dir, doc_type):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, doc_type, limit=3)
+        idx = load_index(tmp_data_dir, "regeringen", doc_type)
+        assert idx is not None, f"No index file saved for {doc_type}"
+        assert idx["source"] == "regeringen"
+        assert idx["doc_type"] == doc_type
+        assert len(idx["entries"]) >= 1, f"No entries indexed for {doc_type}"
+        assert "Indexed" in result.output
 
     def test_prop_has_department(self, cli_runner, tmp_data_dir):
         """Propositions from Regeringen should have department field."""
@@ -193,6 +218,17 @@ class TestDomstolE2E:
         assert len(md_files) >= 1
         assert_markdown_valid(md_files[0])
 
+    @pytest.mark.parametrize("doc_type", ["nja", "ad", "hfd", "mod", "pmod"])
+    def test_update_index(self, cli_runner, tmp_data_dir, doc_type):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, doc_type, limit=3)
+        idx = load_index(tmp_data_dir, "domstol", doc_type)
+        assert idx is not None, f"No index file saved for {doc_type}"
+        assert idx["source"] == "domstol"
+        assert idx["doc_type"] == doc_type
+        assert len(idx["entries"]) >= 1, f"No entries indexed for {doc_type}"
+        assert "Indexed" in result.output
+
     def test_nja_designation_format(self, cli_runner, tmp_data_dir):
         """NJA designation should be a number (reference number)."""
         run_collect(
@@ -216,6 +252,23 @@ class TestDomstolE2E:
 @pytest.mark.e2e
 class TestJoJkE2E:
     """E2E tests for JO and JK web scrapers."""
+
+    @pytest.mark.parametrize(
+        "doc_type",
+        [
+            "jo",
+            pytest.param("jk", marks=pytest.mark.xfail(reason="www.jk.se is unreachable")),
+        ],
+    )
+    def test_update_index(self, cli_runner, tmp_data_dir, doc_type):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, doc_type, limit=3)
+        idx = load_index(tmp_data_dir, "jo_jk", doc_type)
+        assert idx is not None, f"No index file saved for {doc_type}"
+        assert idx["source"] == "jo_jk"
+        assert idx["doc_type"] == doc_type
+        assert len(idx["entries"]) >= 1, f"No entries indexed for {doc_type}"
+        assert "Indexed" in result.output
 
     @pytest.mark.parametrize(
         "doc_type",
@@ -251,6 +304,16 @@ class TestJoJkE2E:
 class TestLagrummetE2E:
     """E2E tests for the Lagrummet agency regulations scraper."""
 
+    def test_update_index(self, cli_runner, tmp_data_dir):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, "foreskrift", limit=3)
+        idx = load_index(tmp_data_dir, "lagrummet", "foreskrift")
+        assert idx is not None, "No index file saved for foreskrift"
+        assert idx["source"] == "lagrummet"
+        assert idx["doc_type"] == "foreskrift"
+        assert len(idx["entries"]) >= 1, "No entries indexed for foreskrift"
+        assert "Indexed" in result.output
+
     def test_collect_foreskrift(self, cli_runner, tmp_data_dir):
         """Download 1 föreskrift."""
         run_collect(
@@ -279,6 +342,17 @@ class TestLagrummetE2E:
 @pytest.mark.e2e
 class TestEurLexE2E:
     """E2E tests for the EUR-Lex SPARQL collector."""
+
+    @pytest.mark.parametrize("doc_type", ["eu_reg", "eu_dir"])
+    def test_update_index(self, cli_runner, tmp_data_dir, doc_type):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, doc_type, limit=3)
+        idx = load_index(tmp_data_dir, "eur_lex", doc_type)
+        assert idx is not None, f"No index file saved for {doc_type}"
+        assert idx["source"] == "eur_lex"
+        assert idx["doc_type"] == doc_type
+        assert len(idx["entries"]) >= 1, f"No entries indexed for {doc_type}"
+        assert "Indexed" in result.output
 
     @pytest.mark.parametrize("doc_type", ["eu_reg", "eu_dir"])
     def test_collect_each_type(self, cli_runner, tmp_data_dir, doc_type):
@@ -314,6 +388,16 @@ class TestEurLexE2E:
 class TestCuriaE2E:
     """E2E tests for the CJEU SPARQL collector."""
 
+    def test_update_index(self, cli_runner, tmp_data_dir):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, "cjeu", limit=3)
+        idx = load_index(tmp_data_dir, "curia", "cjeu")
+        assert idx is not None, "No index file saved for cjeu"
+        assert idx["source"] == "curia"
+        assert idx["doc_type"] == "cjeu"
+        assert len(idx["entries"]) >= 1, "No entries indexed for cjeu"
+        assert "Indexed" in result.output
+
     def test_collect_cjeu(self, cli_runner, tmp_data_dir):
         """Download 1 CJEU judgment."""
         run_collect(
@@ -342,6 +426,16 @@ class TestCuriaE2E:
 @pytest.mark.e2e
 class TestHudocE2E:
     """E2E tests for the HUDOC ECtHR collector."""
+
+    def test_update_index(self, cli_runner, tmp_data_dir):
+        """Update index enumerates remote documents and saves an index file."""
+        result = run_update(cli_runner, tmp_data_dir, "echr", limit=3)
+        idx = load_index(tmp_data_dir, "hudoc", "echr")
+        assert idx is not None, "No index file saved for echr"
+        assert idx["source"] == "hudoc"
+        assert idx["doc_type"] == "echr"
+        assert len(idx["entries"]) >= 1, "No entries indexed for echr"
+        assert "Indexed" in result.output
 
     def test_collect_echr(self, cli_runner, tmp_data_dir):
         """Download 1 ECtHR judgment."""
