@@ -876,6 +876,7 @@ class _UpdateTracker(UpdateProgress):
         self.label = label
         self._count = 0
         self._existing = 0
+        self._dups = 0
         self._total: int | None = None
         self._status: str | None = None
         self._start = time.monotonic()
@@ -888,6 +889,8 @@ class _UpdateTracker(UpdateProgress):
             count_str = f"{self._count:,} found ({new:,} new)"
         else:
             count_str = f"{self._count:,} found"
+        if self._dups:
+            count_str += f", {self._dups:,} dups"
 
         parts: list[str] = []
         if self._total is not None:
@@ -905,6 +908,10 @@ class _UpdateTracker(UpdateProgress):
 
     def on_found(self, doc_id: str) -> None:
         self._count += 1
+        self._render()
+
+    def on_duplicate(self, doc_id: str) -> None:
+        self._dups += 1
         self._render()
 
     def on_total(self, total: int) -> None:
@@ -937,14 +944,15 @@ def _display_update_summary(
     click.echo()
     hdr = (
         f"  {'Type':<14s} {'Source':<12s} {'Indexed':>8s}"
-        f"  {'Expected':>9s}  {'Local':>8s}  {'Missing':>8s}"
+        f"  {'Expected':>9s}  {'Dups':>7s}  {'Local':>8s}  {'Missing':>8s}"
     )
     click.echo(hdr)
-    click.echo(f"  {'─' * 67}")
+    click.echo(f"  {'─' * 76}")
 
     total_remote = 0
     total_local = 0
     total_missing = 0
+    total_dups = 0
     incomplete: list[tuple[str, str, str]] = []
     year_data: list[tuple[str, dict[int, int]]] = []
 
@@ -952,14 +960,18 @@ def _display_update_summary(
         remote = index.total_entries
         local = count_local(index.doc_type, data_dir)
         missing = count_missing(index, data_dir)
+        dups = sum(p.fetched - p.indexed for p in index.pages)
         total_remote += remote
         total_local += local
         total_missing += missing
+        total_dups += dups
 
         if index.total_available is not None:
             expected = f"{index.total_available:>,}"
         else:
             expected = "—"
+
+        dups_str = f"{dups:>,}" if dups else ""
 
         warn = ""
         if not index.complete:
@@ -968,17 +980,18 @@ def _display_update_summary(
 
         click.echo(
             f"  {doc_type_val:<14s} {source_name:<12s} {remote:>8,}"
-            f"  {expected:>9s}  {local:>8,}  {missing:>8,}{warn}"
+            f"  {expected:>9s}  {dups_str:>7s}  {local:>8,}  {missing:>8,}{warn}"
         )
 
         by_year = entries_by_year(index)
         if by_year:
             year_data.append((doc_type_val, by_year))
 
-    click.echo(f"  {'─' * 67}")
+    click.echo(f"  {'─' * 76}")
+    total_dups_str = f"{total_dups:>,}" if total_dups else ""
     click.echo(
         f"  {'Total':<14s} {'':12s} {total_remote:>8,}"
-        f"  {'':>9s}  {total_local:>8,}  {total_missing:>8,}"
+        f"  {'':>9s}  {total_dups_str:>7s}  {total_local:>8,}  {total_missing:>8,}"
     )
 
     if incomplete:

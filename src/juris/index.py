@@ -149,6 +149,9 @@ class UpdateProgress:
     def on_resume(self, existing_entries: int, existing_pages: int) -> None:
         """Called when resuming from an incomplete index."""
 
+    def on_duplicate(self, doc_id: str) -> None:
+        """Called when a duplicate document is skipped."""
+
     def on_front_scan(self) -> None:
         """Called when starting the front-scan phase."""
 
@@ -301,6 +304,8 @@ async def update_index(
                     progress.on_found(doc.doc_id)
             else:
                 consecutive_dups += 1
+                if progress:
+                    progress.on_duplicate(doc.doc_id)
                 if consecutive_dups >= _DUP_STOP_THRESHOLD:
                     logger.info(
                         "Stopping %s/%s: %d consecutive duplicates — source is cycling",
@@ -374,6 +379,8 @@ async def update_index(
 
                 if doc.doc_id in seen_ids:
                     consecutive_seen += 1
+                    if progress:
+                        progress.on_duplicate(doc.doc_id)
                 else:
                     consecutive_seen = 0
                     seen_ids.add(doc.doc_id)
