@@ -869,6 +869,22 @@ def collect_all(
 # ---------------------------------------------------------------------------
 
 
+async def _probe_source_available(source_name: str) -> bool:
+    """Probe a source via its collector's ``is_available`` health check.
+
+    Returns ``False`` on any exception or when the collector reports
+    unavailable.  Extracted as a module-level function so tests can patch
+    it without spinning up real network probes.
+    """
+    collector = get_collector_class(source_name)()
+    try:
+        return await collector.is_available()
+    except Exception:
+        return False
+    finally:
+        await collector.close()
+
+
 class _UpdateTracker(UpdateProgress):
     """CLI progress reporter for update command."""
 
@@ -1123,6 +1139,22 @@ def update(
             alt_str = f"  (also: {', '.join(alt)})" if alt else ""
             click.echo(f"  {dt.value:14s} <- {src_name}{alt_str}")
         click.echo(f"\n{len(plan)} document types across {len({s for _, s in plan})} providers")
+        return
+
+    # Probe each unique source once and drop unavailable ones from the plan
+    async def _probe_sources() -> set[str]:
+        unavailable: set[str] = set()
+        for src_name in sorted({s for _, s in plan}):
+            if not await _probe_source_available(src_name):
+                unavailable.add(src_name)
+                click.echo(f"  {src_name} is temporarily out of service, skipping..")
+        return unavailable
+
+    unavailable_sources = asyncio.run(_probe_sources())
+    if unavailable_sources:
+        plan = [(dt, s) for dt, s in plan if s not in unavailable_sources]
+    if not plan:
+        click.echo("No available sources to update.")
         return
 
     results: list[tuple[str, str, RemoteIndex]] = []
