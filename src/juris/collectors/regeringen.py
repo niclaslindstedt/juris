@@ -58,6 +58,24 @@ _DEPT_REF_PATTERN = re.compile(r"\b([A-ZÅÄÖa-zåäö]{1,5}\d{4})/(\d{3,6})\b"
 
 PAGE_SIZE = 20  # Regeringen.se shows 20 results per page
 
+# Map DocType to Regeringen.se taxonomy category ID (used by the Filter API
+# to return TotalCount without scraping all pages).
+_DOCTYPE_CATEGORY_IDS: dict[DocType, int] = {
+    DocType.PROP: 1329,
+    DocType.SOU: 1331,
+    DocType.DS: 1325,
+    DocType.LAGR: 2085,
+    DocType.DIR: 1327,
+    DocType.SKR: 1330,
+}
+
+_FILTER_API_URL = (
+    "{base}/Filter/GetFilteredItems?lang=sv&filterType=Taxonomy"
+    "&filterByType=FilterablePageBase&preFilteredCategories={cat_id}"
+    "&rootPageReference=0&page=1&pageSize=&displayLimited=True"
+    "&sortAlphabetically=False&filterFromToday=False"
+)
+
 
 def _parse_designation(text: str, doc_type: DocType) -> tuple[str, str | None]:
     """Extract (designation, session) from text containing e.g. 'Prop. 2025/26:229'.
@@ -107,6 +125,28 @@ class RegeringenCollector(BaseCollector):
 
     def __init__(self, rate_limit: float = 1.0) -> None:
         super().__init__(rate_limit=rate_limit, follow_redirects=True)
+
+    # ------------------------------------------------------------------
+    # Total count via Filter API
+    # ------------------------------------------------------------------
+
+    async def _fetch_total_count(self, doc_type: DocType) -> int | None:
+        """Fetch the total number of documents from the Filter API."""
+        cat_id = _DOCTYPE_CATEGORY_IDS.get(doc_type)
+        if cat_id is None:
+            return None
+        url = _FILTER_API_URL.format(base=BASE_URL, cat_id=cat_id)
+        try:
+            client = await self._get_client()
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            total = data.get("TotalCount")
+            if isinstance(total, int):
+                return total
+        except Exception:
+            logger.debug("Failed to fetch total count for %s", doc_type)
+        return None
 
     # ------------------------------------------------------------------
     # Listing page parsing
@@ -385,6 +425,10 @@ class RegeringenCollector(BaseCollector):
         """Yield documents from Regeringen.se."""
         if doc_type not in _DOCTYPE_PATHS:
             raise ValueError(f"Unsupported doc type for Regeringen: {doc_type}")
+
+        # Fetch total count from the Filter API (cheap JSON call).
+        if not since and not until:
+            self.total_available = await self._fetch_total_count(doc_type)
 
         path = _DOCTYPE_PATHS[doc_type]
         count = 0
