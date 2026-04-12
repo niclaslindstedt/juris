@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0] - 2026-04-12
+
+### Added
+
+- fetch total document count from Filter API during update
+
+
 ## [0.3.0] - 2026-04-09
 
 ### Added
