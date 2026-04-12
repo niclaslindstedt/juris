@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from juris.cli import main
@@ -280,6 +281,13 @@ class TestCounts:
 
 
 class TestUpdateCli:
+    @pytest.fixture(autouse=True)
+    def _all_sources_available(self) -> object:
+        """By default, treat every source as available so existing CLI tests
+        don't accidentally hit the network through the new probe step."""
+        with patch("juris.cli._probe_source_available", AsyncMock(return_value=True)) as m:
+            yield m
+
     def test_update_dry_run(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
@@ -452,6 +460,83 @@ class TestUpdateCli:
         # Verify fresh=True was passed
         call_kwargs = mock_update.call_args[1]
         assert call_kwargs["fresh"] is True
+
+    @patch("juris.cli.update_index")
+    def test_update_skips_unavailable_source(
+        self, mock_update: AsyncMock, tmp_path: Path, _all_sources_available: AsyncMock
+    ) -> None:
+        """When a source's probe returns False, that source is skipped with a
+        friendly message and update_index is never called for it."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        _all_sources_available.return_value = False
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--data-dir", str(data_dir), "update", "--type", "prop"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "riksdagen is temporarily out of service, skipping.." in result.output
+        assert "No available sources" in result.output
+        mock_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_riksdagen_is_available_returns_false_on_read_error(self) -> None:
+        """RiksdagenCollector.is_available() should return False when the
+        upstream API resets the connection mid-response (httpx.ReadError)."""
+        import httpx
+
+        from juris.collectors.riksdagen import RiksdagenCollector
+
+        collector = RiksdagenCollector()
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.is_closed = False
+        mock_client.get = AsyncMock(side_effect=httpx.ReadError("connection reset"))
+        collector._client = mock_client
+        try:
+            assert await collector.is_available() is False
+        finally:
+            await collector.close()
+
+    @pytest.mark.asyncio
+    async def test_riksdagen_is_available_returns_true_on_200(self) -> None:
+        import httpx
+
+        from juris.collectors.riksdagen import RiksdagenCollector
+
+        collector = RiksdagenCollector()
+        mock_resp = AsyncMock(spec=httpx.Response)
+        mock_resp.status_code = 200
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.is_closed = False
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        collector._client = mock_client
+        try:
+            assert await collector.is_available() is True
+        finally:
+            await collector.close()
+
+    @patch("juris.cli.update_counts")
+    def test_update_counts_only_skips_unavailable(
+        self, mock_counts: AsyncMock, tmp_path: Path, _all_sources_available: AsyncMock
+    ) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        _all_sources_available.return_value = False
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["--data-dir", str(data_dir), "update", "--type", "prop", "--counts-only"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "temporarily out of service" in result.output
+        mock_counts.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -106,6 +106,16 @@ class BaseCollector(ABC):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
+    async def is_available(self) -> bool:
+        """Quick health check — return True if the source is reachable.
+
+        Default implementation assumes the source is available.  Collectors
+        for sources with known intermittent outages should override this to
+        perform a fast probe (and return ``False`` on failure) so that
+        callers can skip them gracefully.
+        """
+        return True
+
     async def _fetch_with_retry(
         self,
         method: str,

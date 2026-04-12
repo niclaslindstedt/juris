@@ -322,6 +322,22 @@ class RiksdagenCollector(BaseCollector):
                 pass
         return None
 
+    async def is_available(self) -> bool:
+        """Probe the Riksdagen API with a single tiny request.
+
+        ``data.riksdagen.se`` is known to occasionally accept TLS connections
+        but reset the response mid-stream (``ReadError``).  When that happens
+        every collect call hangs through retries — this fast probe lets the
+        caller skip the source instead.
+        """
+        url = f"{BASE_URL}/dokumentlista/?doktyp=prop&utformat=json&antal=1&sida=1&subtyp=prop"
+        try:
+            client = await self._get_client()
+            resp = await client.get(url, timeout=10.0)
+        except (httpx.HTTPError, OSError):
+            return False
+        return resp.status_code == 200
+
     async def collect(
         self,
         doc_type: DocType,
