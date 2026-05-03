@@ -394,6 +394,13 @@ class _ProgressTracker:
         self._skipped += 1
         self._render()
 
+    def on_total(self, total: int) -> None:
+        # Prefer a caller-supplied limit (e.g. --limit) over the API total
+        # so the progress bar reflects what the user asked for.
+        if self.total is None:
+            self.total = total
+            self._render()
+
     def on_finish(self) -> None:
         click.echo()  # newline after progress
 
@@ -407,7 +414,10 @@ class _ProgressTracker:
             bar_width = 20
             filled = int(bar_width * pct / 100)
             bar = "█" * filled + "░" * (bar_width - filled)
-            line = f"\r  {self.label}: {bar} {pct}% ({collected} saved, {skipped} skipped)"
+            line = (
+                f"\r  {self.label}: {bar} {pct}% "
+                f"({collected} saved, {skipped} skipped of {self.total:,})"
+            )
         else:
             line = f"\r  {self.label}: {collected} saved, {skipped} skipped"
         padded = line.ljust(self._last_line_len)
@@ -504,6 +514,11 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
     default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
+@click.option(
+    "--update-index/--no-update-index",
+    default=True,
+    help="Populate .index/ as a side effect of this collection (default on).",
+)
 @click.pass_context
 def collect(
     ctx: click.Context,
@@ -515,6 +530,7 @@ def collect(
     limit: int | None,
     skip_existing: bool,
     skip_content: bool,
+    update_index: bool,
 ) -> None:
     """Collect documents from a source."""
     data_dir: Path = ctx.obj["data_dir"]
@@ -544,6 +560,7 @@ def collect(
                 skip_existing=skip_existing,
                 skip_content=skip_content,
                 progress=progress,
+                update_index=update_index,
             )
             click.echo(f"\nDone: {collected} collected, {skipped} skipped")
         finally:
@@ -570,6 +587,11 @@ def collect(
     default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
+@click.option(
+    "--update-index/--no-update-index",
+    default=True,
+    help="Populate .index/ as a side effect of this collection (default on).",
+)
 @click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
 @click.option(
     "--all-providers",
@@ -586,6 +608,7 @@ def collect_type(
     limit: int | None,
     skip_existing: bool,
     skip_content: bool,
+    update_index: bool,
     dry_run: bool,
     all_providers: bool,
 ) -> None:
@@ -648,6 +671,7 @@ def collect_type(
                     skip_existing=skip_existing,
                     skip_content=skip_content,
                     progress=progress,
+                    update_index=update_index,
                 )
                 click.echo(f"  {source_name}: {collected} collected, {skipped_count} skipped")
                 grand_collected += collected
@@ -679,6 +703,11 @@ def collect_type(
     default=False,
     help="Skip fetching full text (faster, metadata only).",
 )
+@click.option(
+    "--update-index/--no-update-index",
+    default=True,
+    help="Populate .index/ as a side effect of this collection (default on).",
+)
 @click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
 @click.option(
     "--concurrent/--sequential",
@@ -699,6 +728,7 @@ def collect_all(
     limit: int | None,
     skip_existing: bool,
     skip_content: bool,
+    update_index: bool,
     dry_run: bool,
     concurrent: bool,
     max_concurrency: int,
@@ -784,6 +814,7 @@ def collect_all(
                                 skip_existing=skip_existing,
                                 skip_content=skip_content,
                                 progress=progress,
+                                update_index=update_index,
                             )
                             tracker.mark_finished(dt.value, collected, skipped)
                         except Exception as exc:
@@ -827,6 +858,7 @@ def collect_all(
                         skip_existing=skip_existing,
                         skip_content=skip_content,
                         progress=progress,
+                        update_index=update_index,
                     )
                     tracker.mark_finished(dt.value, collected, skipped)
                 except Exception as exc:

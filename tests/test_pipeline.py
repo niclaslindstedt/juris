@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from juris.collectors.base import BaseCollector
+from juris.index import load_index
 from juris.models import DocType, Document, Source
 from juris.pipeline import collect_from_source
 from juris.state import CollectionState, load_state, save_state
@@ -170,3 +171,88 @@ class TestTotalAvailablePropagation:
 
         state = load_state(tmp_data_dir, Source.REGERINGEN, DocType.DS)
         assert state.total_available == 300
+
+
+class TestIndexSideEffect:
+    """The remote index should be populated as a side effect of collection."""
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_full_run_marks_index_complete(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        _patch_collector.total_available = 1
+
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+
+        idx = load_index(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert idx is not None
+        assert idx.complete is True
+        assert idx.total_available == 1
+        assert [e.doc_id for e in idx.entries] == ["ds-2026:99"]
+        assert len(idx.pages) == 1
+        assert idx.pages[0].doc_ids == ["ds-2026:99"]
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_filtered_run_leaves_index_incomplete(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        await collect_from_source(
+            "regeringen", DocType.DS, tmp_data_dir, limit=1, skip_existing=False
+        )
+
+        idx = load_index(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert idx is not None
+        assert idx.complete is False
+        assert [e.doc_id for e in idx.entries] == ["ds-2026:99"]
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_no_update_index_skips_write(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        await collect_from_source(
+            "regeringen",
+            DocType.DS,
+            tmp_data_dir,
+            skip_existing=False,
+            update_index=False,
+        )
+
+        assert load_index(tmp_data_dir, Source.REGERINGEN, DocType.DS) is None
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_on_total_fired_when_known(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        _patch_collector.total_available = 42
+        seen: list[int] = []
+
+        class _Capture:
+            def on_save(self, doc_id: str, path: Path) -> None: ...
+            def on_skip(self, doc_id: str) -> None: ...
+            def on_total(self, total: int) -> None:
+                seen.append(total)
+
+            def on_finish(self) -> None: ...
+
+        await collect_from_source(
+            "regeringen",
+            DocType.DS,
+            tmp_data_dir,
+            skip_existing=False,
+            progress=_Capture(),
+        )
+
+        assert seen == [42]
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_dedup_against_existing_entries(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        # First run: writes one entry.
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+        # Second run yields the same doc — index must not duplicate it.
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+
+        idx = load_index(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert idx is not None
+        assert [e.doc_id for e in idx.entries] == ["ds-2026:99"]
