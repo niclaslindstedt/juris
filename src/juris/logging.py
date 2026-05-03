@@ -267,6 +267,10 @@ class CompositeProgress:
         if hasattr(self._ui, "on_skip"):
             self._ui.on_skip(doc_id)
 
+    def on_total(self, total: int) -> None:
+        if hasattr(self._ui, "on_total"):
+            self._ui.on_total(total)
+
     def on_finish(self) -> None:
         self._logger.on_finish()
         if hasattr(self._ui, "on_finish"):
