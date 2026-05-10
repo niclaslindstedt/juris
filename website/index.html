@@ -2,13 +2,189 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="juris — A git-native open database for Swedish law. Collect and normalize 21 document types from 8 official sources." />
-    <title>juris — Swedish Legal Data Collection</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="https://juris.niclaslindstedt.se/" />
+
+    <title>juris — Swedish Legal Data CLI: Riksdagen, SOU, Domstol, EUR-Lex, ECHR in JSON + Markdown</title>
+
+    <meta
+      name="description"
+      content="juris is an open-source Python CLI that collects and normalizes Swedish and EU legal documents — propositioner, SOU, betänkanden, SFS, NJA, AD, HFD, AFS, JO, JK, EU regulations, CJEU and ECHR rulings — into a git-friendly database of JSON and Markdown. Async I/O, incremental collection, PDF text extraction, 21 document types, 8 official sources."
+    />
+    <meta
+      name="keywords"
+      content="juris, swedish law, swedish legal data, swedish law api, riksdagen api, propositioner, sou, betänkanden, ds, kommittédirektiv, sfs, författningar, lagrummet, afs, hslf-fs, domstolsverket, högsta domstolen, hovrätten, nja, ad, hfd, mark- och miljödomstolen, jo, jk, justitieombudsmannen, justitiekanslern, eur-lex, eu directives, eu regulations, cjeu, ecthr, echr, rättsdata, rättsfall, prejudikat, lagstiftning, open data sweden, python cli, async http, sparql, json dataset, markdown, git native database, pdf text extraction, pymupdf, web scraping, beautifulsoup, httpx, click, pydantic, legal informatics, retsinformatik, juridik open source"
+    />
+
+    <meta name="author" content="Niclas Lindstedt" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="theme-color" content="#0b0f14" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="application-name" content="juris" />
+    <meta name="generator" content="Vite + React" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="juris" />
+    <meta property="og:url" content="https://juris.niclaslindstedt.se/" />
+    <meta property="og:title" content="juris — A git-native open database for Swedish law" />
+    <meta
+      property="og:description"
+      content="Python CLI that collects and normalizes Swedish + EU legal documents (propositioner, SOU, betänkanden, SFS, NJA, EUR-Lex, ECHR…) into JSON and Markdown. 21 document types, 8 official sources, async I/O, incremental collection."
+    />
+    <meta property="og:image" content="https://juris.niclaslindstedt.se/favicon.svg" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="sv_SE" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="juris — Swedish legal data, git-native" />
+    <meta
+      name="twitter:description"
+      content="Open-source Python CLI: collect & normalize 21 types of Swedish and EU legal documents from 8 official sources into JSON + Markdown."
+    />
+    <meta name="twitter:image" content="https://juris.niclaslindstedt.se/favicon.svg" />
+
+    <!-- Hreflang (content covers both English UI and Swedish legal terminology) -->
+    <link rel="alternate" hreflang="en" href="https://juris.niclaslindstedt.se/" />
+    <link rel="alternate" hreflang="sv" href="https://juris.niclaslindstedt.se/" />
+    <link rel="alternate" hreflang="x-default" href="https://juris.niclaslindstedt.se/" />
+
+    <!-- Discovery -->
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+
+    <!-- JSON-LD: SoftwareSourceCode -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        "name": "juris",
+        "description": "Open-source Python CLI that collects and normalizes Swedish and EU legal documents from 8 official sources into a git-friendly database of JSON + Markdown.",
+        "url": "https://juris.niclaslindstedt.se/",
+        "codeRepository": "https://github.com/niclaslindstedt/juris",
+        "programmingLanguage": ["Python"],
+        "runtimePlatform": "Python 3.11+",
+        "license": "https://opensource.org/licenses/MIT",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": ["Linux", "macOS", "Windows"],
+        "keywords": "swedish law, riksdagen, propositioner, SOU, SFS, NJA, EUR-Lex, ECHR, CJEU, JO, JK, lagrummet, AFS, legal data, open data, python, cli, async, sparql, json, markdown",
+        "author": {
+          "@type": "Person",
+          "name": "Niclas Lindstedt",
+          "url": "https://github.com/niclaslindstedt"
+        },
+        "downloadUrl": "https://pypi.org/project/juris/",
+        "installUrl": "https://pypi.org/project/juris/"
+      }
+    </script>
+
+    <!-- JSON-LD: WebSite with SearchAction -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "juris",
+        "url": "https://juris.niclaslindstedt.se/",
+        "description": "A git-native open database for Swedish law.",
+        "inLanguage": ["en", "sv"],
+        "publisher": {
+          "@type": "Person",
+          "name": "Niclas Lindstedt"
+        }
+      }
+    </script>
+
+    <!-- JSON-LD: FAQ for common programmer queries -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "How do I collect Swedish legal documents programmatically?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Install juris with `pip install juris`, then run `juris collect-all` to fetch documents from Riksdagen, Regeringen, Domstolsverket, JO/JK, Lagrummet, EUR-Lex, CJEU, and HUDOC into JSON + Markdown files."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which Swedish legal document types does juris support?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "21 document types: propositioner (prop), motioner (mot), betänkanden (bet), riksdagsskrivelser (skr), SOU, Ds, kommittédirektiv (dir), lagrådsremisser (lagr), SFS, NJA, AD, HFD, mark- och miljödomstolen (mod, pmod), JO and JK beslut, myndighetsföreskrifter (foreskrift, AFS, HSLF-FS), EU regulations (eu_reg), EU directives (eu_dir), CJEU rulings (cjeu), and ECHR rulings (echr)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is the data stored in a machine-readable format?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Every document is stored both as structured JSON (for machines and pipelines) and as Markdown with YAML frontmatter (human-readable, browsable on GitHub, ideal for LLM context)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does juris extract text from PDF attachments?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes — PDF attachments are downloaded and full-text extracted using pymupdf, with graceful fallback when extraction fails."
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <noscript>
+        <header>
+          <h1>juris — A git-native open database for Swedish law</h1>
+          <p>
+            <strong>juris</strong> is an open-source Python CLI that collects
+            and normalizes Swedish and EU legal documents into a unified,
+            version-controllable database of JSON + Markdown files.
+          </p>
+        </header>
+        <section>
+          <h2>What juris collects</h2>
+          <p>
+            21 document types across 8 official sources: Riksdagen
+            (propositioner, motioner, betänkanden, skrivelser), Regeringen
+            (SOU, Ds, kommittédirektiv, lagrådsremisser), Domstolsverket (NJA,
+            AD, HFD, mark- och miljödomstolen), JO and JK (ombudsmannabeslut),
+            Lagrummet (myndighetsföreskrifter, AFS, HSLF-FS), EUR-Lex (EU
+            regulations and directives), CJEU (Court of Justice of the EU
+            rulings), and HUDOC (European Court of Human Rights rulings).
+          </p>
+        </section>
+        <section>
+          <h2>Install</h2>
+          <pre>pip install juris</pre>
+          <p>
+            Source code on
+            <a href="https://github.com/niclaslindstedt/juris">GitHub</a>,
+            package on <a href="https://pypi.org/project/juris/">PyPI</a>.
+          </p>
+        </section>
+        <section>
+          <h2>Documentation</h2>
+          <ul>
+            <li><a href="/docs/overview">Overview</a></li>
+            <li><a href="/docs/architecture">Architecture</a></li>
+            <li><a href="/docs/collectors">Collectors</a></li>
+            <li><a href="/docs/document-model">Document model</a></li>
+            <li><a href="/docs/storage-format">Storage format</a></li>
+            <li><a href="/docs/data-sources">Data sources</a></li>
+            <li><a href="/docs/parsing-rules">Parsing rules</a></li>
+            <li><a href="/manual">CLI manual</a></li>
+          </ul>
+        </section>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

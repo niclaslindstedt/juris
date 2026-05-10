@@ -19,6 +19,8 @@ const MAN_DIR = join(ROOT, "man");
 const DOCS_DIR = join(ROOT, "docs");
 const PYPROJECT_PATH = join(ROOT, "pyproject.toml");
 const OUTPUT_PATH = resolve(import.meta.dirname, "../src/data/sourceData.ts");
+const SITEMAP_PATH = resolve(import.meta.dirname, "../public/sitemap.xml");
+const SITE_URL = "https://juris.niclaslindstedt.se";
 
 // --- Manual metadata not reliably parseable from code ---
 
@@ -322,3 +324,57 @@ console.log(`  Sources: ${sourceData.length}`);
 console.log(`  Collectors: ${collectors.length}`);
 console.log(`  Man pages: ${manPages.length}`);
 console.log(`  Doc pages: ${docPages.length}`);
+
+// --- sitemap.xml — generated from the same source data so SEO routes
+//     never drift from the actually-shipped doc and man pages. ---
+
+const today = new Date().toISOString().slice(0, 10);
+
+interface SitemapEntry {
+  loc: string;
+  changefreq: "daily" | "weekly" | "monthly";
+  priority: string;
+}
+
+const sitemapEntries: SitemapEntry[] = [
+  { loc: `${SITE_URL}/`, changefreq: "weekly", priority: "1.0" },
+  { loc: `${SITE_URL}/docs`, changefreq: "weekly", priority: "0.9" },
+  { loc: `${SITE_URL}/manual`, changefreq: "weekly", priority: "0.9" },
+];
+
+for (const p of docPages) {
+  sitemapEntries.push({
+    loc: `${SITE_URL}/docs/${p.slug}`,
+    changefreq: "weekly",
+    priority: "0.8",
+  });
+}
+
+for (const p of manPages) {
+  sitemapEntries.push({
+    loc: `${SITE_URL}/manual/${p.command}`,
+    changefreq: "weekly",
+    priority: "0.7",
+  });
+}
+
+const sitemap =
+  `<?xml version="1.0" encoding="UTF-8"?>\n` +
+  `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+  sitemapEntries
+    .map(
+      (e) =>
+        `  <url>\n` +
+        `    <loc>${e.loc}</loc>\n` +
+        `    <lastmod>${today}</lastmod>\n` +
+        `    <changefreq>${e.changefreq}</changefreq>\n` +
+        `    <priority>${e.priority}</priority>\n` +
+        `  </url>`,
+    )
+    .join("\n") +
+  `\n</urlset>\n`;
+
+mkdirSync(dirname(SITEMAP_PATH), { recursive: true });
+writeFileSync(SITEMAP_PATH, sitemap, "utf-8");
+console.log(`Generated ${SITEMAP_PATH}`);
+console.log(`  URLs: ${sitemapEntries.length}`);

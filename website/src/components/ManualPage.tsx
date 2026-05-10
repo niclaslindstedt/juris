@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MAN_PAGES } from "../data/sourceData";
 import { renderMarkdown } from "./markdown";
+import { usePageMeta } from "../hooks/usePageMeta";
 
 const PAGE_ORDER = ["juris", "collect", "collect-type", "collect-all", "status", "stats", "man"];
 
@@ -17,6 +18,12 @@ export default function ManualPage() {
 
   const [active, setActive] = useState(urlCommand ?? sorted[0]?.command ?? "juris");
   const page = sorted.find((p) => p.command === active) ?? sorted[0];
+
+  const cmdLabel = page.command === "juris" ? "juris" : `juris ${page.command}`;
+  usePageMeta(
+    `${cmdLabel} — juris manual`,
+    `Reference documentation for the \`${cmdLabel}\` command in juris, the Swedish legal data CLI.`,
+  );
 
   // Sync URL param to active state
   useEffect(() => {

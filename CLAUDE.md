@@ -62,11 +62,19 @@ scripts/
 └── generate-changelog.sh # Changelog generation from conventional commits
 website/                # GitHub Pages website (React + Vite + Tailwind)
 ├── scripts/
-│   └── extract-data.ts # Extracts data from Python source → sourceData.ts
+│   └── extract-data.ts # Extracts data from Python source → sourceData.ts + sitemap.xml
+├── public/
+│   ├── CNAME           # juris.niclaslindstedt.se
+│   ├── favicon.svg
+│   ├── robots.txt      # SEO: allow all crawlers + LLM bots, references sitemap
+│   └── sitemap.xml     # AUTO-GENERATED on build (gitignored)
 ├── src/
 │   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, Documentation, etc.)
+│   ├── hooks/
+│   │   └── usePageMeta.ts # Per-route document title + description (SPA SEO)
 │   └── data/
 │       └── sourceData.ts # AUTO-GENERATED from Python source
+├── index.html          # SEO meta tags, Open Graph, Twitter Card, JSON-LD, noscript fallback
 ├── package.json
 └── vite.config.ts
 .github/workflows/
