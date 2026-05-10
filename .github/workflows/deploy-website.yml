@@ -43,8 +43,6 @@ jobs:
       - name: Build
         working-directory: website
         run: npx tsc -b && npx vite build && cp dist/index.html dist/404.html
-        env:
-          BASE_URL: /juris/
 
       - uses: actions/upload-pages-artifact@v3
         with:
