@@ -8,6 +8,7 @@ on:
       - "src/juris/models.py"
       - "src/juris/collectors/**"
       - "man/**"
+      - "docs/**"
       - "pyproject.toml"
   workflow_dispatch:
 

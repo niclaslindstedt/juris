@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { DOC_PAGES } from "../data/sourceData";
 import { renderMarkdown } from "./markdown";
+import { usePageMeta } from "../hooks/usePageMeta";
 
 const PAGE_ORDER = [
   "overview",
@@ -35,6 +36,11 @@ export default function DocumentationPage() {
 
   const [active, setActive] = useState(urlSlug ?? sorted[0]?.slug ?? "overview");
   const page = sorted.find((p) => p.slug === active) ?? sorted[0];
+
+  usePageMeta(
+    `${page.title} — juris docs`,
+    `${page.title} — concept and architecture documentation for juris, the Swedish legal data CLI.`,
+  );
 
   // Sync URL param to active state
   useEffect(() => {

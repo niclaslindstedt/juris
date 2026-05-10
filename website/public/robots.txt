@@ -1,0 +1,27 @@
+# juris — https://juris.niclaslindstedt.se/
+# Public documentation site for the juris CLI.
+
+User-agent: *
+Allow: /
+
+# AI / LLM crawlers — explicitly allowed; juris is open source and intended
+# to be discovered by humans and machines alike.
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://juris.niclaslindstedt.se/sitemap.xml
