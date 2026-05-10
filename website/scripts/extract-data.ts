@@ -338,8 +338,8 @@ interface SitemapEntry {
 
 const sitemapEntries: SitemapEntry[] = [
   { loc: `${SITE_URL}/`, changefreq: "weekly", priority: "1.0" },
-  { loc: `${SITE_URL}/docs`, changefreq: "weekly", priority: "0.9" },
-  { loc: `${SITE_URL}/manual`, changefreq: "weekly", priority: "0.9" },
+  { loc: `${SITE_URL}/docs/`, changefreq: "weekly", priority: "0.9" },
+  { loc: `${SITE_URL}/manual/`, changefreq: "weekly", priority: "0.9" },
 ];
 
 for (const p of docPages) {
@@ -357,6 +357,18 @@ for (const p of manPages) {
     priority: "0.7",
   });
 }
+
+// LLM-friendly text endpoints — referenced by <link rel="alternate"> tags
+sitemapEntries.push({
+  loc: `${SITE_URL}/llms.txt`,
+  changefreq: "weekly",
+  priority: "0.5",
+});
+sitemapEntries.push({
+  loc: `${SITE_URL}/llms-full.txt`,
+  changefreq: "weekly",
+  priority: "0.5",
+});
 
 const sitemap =
   `<?xml version="1.0" encoding="UTF-8"?>\n` +

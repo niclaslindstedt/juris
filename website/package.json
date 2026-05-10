@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run extract && tsc -b && vite build && cp dist/index.html dist/404.html",
+    "build": "npm run extract && tsc -b && vite build && tsx scripts/prerender.ts && cp dist/index.html dist/404.html",
     "preview": "vite preview",
-    "extract": "tsx scripts/extract-data.ts"
+    "extract": "tsx scripts/extract-data.ts",
+    "prerender": "tsx scripts/prerender.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
