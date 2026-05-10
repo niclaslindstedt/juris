@@ -62,11 +62,12 @@ scripts/
 └── generate-changelog.sh # Changelog generation from conventional commits
 website/                # GitHub Pages website (React + Vite + Tailwind)
 ├── scripts/
-│   └── extract-data.ts # Extracts data from Python source → sourceData.ts + sitemap.xml
+│   ├── extract-data.ts # Extracts data from Python source → sourceData.ts + sitemap.xml
+│   └── prerender.ts    # Post-build: static HTML for /docs/* + /manual/* routes; emits llms.txt + llms-full.txt
 ├── public/
 │   ├── CNAME           # juris.niclaslindstedt.se
 │   ├── favicon.svg
-│   ├── robots.txt      # SEO: allow all crawlers + LLM bots, references sitemap
+│   ├── robots.txt      # SEO: allow all crawlers + LLM bots, references sitemap + llms.txt
 │   └── sitemap.xml     # AUTO-GENERATED on build (gitignored)
 ├── src/
 │   ├── components/     # React components (Navbar, Hero, Terminal, ManPages, Documentation, etc.)

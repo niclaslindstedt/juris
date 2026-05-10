@@ -25,3 +25,9 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://juris.niclaslindstedt.se/sitemap.xml
+
+# LLM-friendly project summaries (https://llmstxt.org/).
+# Plain-text corpus for AI agents and crawlers that prefer markdown over HTML.
+# Browsable at:
+#   https://juris.niclaslindstedt.se/llms.txt        (short summary + links)
+#   https://juris.niclaslindstedt.se/llms-full.txt   (full docs + man pages)

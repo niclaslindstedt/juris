@@ -54,6 +54,8 @@
 
     <!-- Discovery -->
     <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+    <link rel="alternate" type="text/plain" title="LLM-friendly summary" href="/llms.txt" />
+    <link rel="alternate" type="text/plain" title="LLM-friendly full corpus" href="/llms-full.txt" />
 
     <!-- JSON-LD: SoftwareSourceCode -->
     <script type="application/ld+json">
@@ -61,6 +63,7 @@
         "@context": "https://schema.org",
         "@type": "SoftwareSourceCode",
         "name": "juris",
+        "alternateName": ["juris CLI", "juris Python package"],
         "description": "Open-source Python CLI that collects and normalizes Swedish and EU legal documents from 8 official sources into a git-friendly database of JSON + Markdown.",
         "url": "https://juris.niclaslindstedt.se/",
         "codeRepository": "https://github.com/niclaslindstedt/juris",
@@ -77,6 +80,167 @@
         },
         "downloadUrl": "https://pypi.org/project/juris/",
         "installUrl": "https://pypi.org/project/juris/"
+      }
+    </script>
+
+    <!-- JSON-LD: SoftwareApplication (lets juris show up in dev-tool searches) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "juris",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "CommandLineApplication",
+        "operatingSystem": "Linux, macOS, Windows",
+        "softwareRequirements": "Python 3.11+",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "downloadUrl": "https://pypi.org/project/juris/",
+        "softwareHelp": {
+          "@type": "CreativeWork",
+          "url": "https://juris.niclaslindstedt.se/manual"
+        }
+      }
+    </script>
+
+    <!-- JSON-LD: HowTo install — appears in Google's "how to" rich results -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Install juris and collect Swedish legal documents",
+        "description": "Install the juris Python CLI and run a first collection of Swedish and EU legal documents.",
+        "totalTime": "PT5M",
+        "tool": [
+          { "@type": "HowToTool", "name": "Python 3.11+" },
+          { "@type": "HowToTool", "name": "pip" }
+        ],
+        "step": [
+          {
+            "@type": "HowToStep",
+            "name": "Install from PyPI",
+            "text": "Run pip install juris to install the CLI from PyPI.",
+            "url": "https://pypi.org/project/juris/"
+          },
+          {
+            "@type": "HowToStep",
+            "name": "Collect documents",
+            "text": "Run juris collect-all to fetch documents from all 8 sources, or juris collect <source> for a single one.",
+            "url": "https://juris.niclaslindstedt.se/manual/collect-all"
+          },
+          {
+            "@type": "HowToStep",
+            "name": "Inspect output",
+            "text": "Documents are written to data/{doc_type}/{session}/{id}.{json,md} — JSON for machines, Markdown with YAML frontmatter for humans.",
+            "url": "https://juris.niclaslindstedt.se/docs/storage-format"
+          }
+        ]
+      }
+    </script>
+
+    <!-- JSON-LD: Dataset — surfaces juris in Google Dataset Search -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": "Swedish and EU legal documents (juris)",
+        "alternateName": "juris legal corpus",
+        "description": "A normalized, version-controllable corpus of Swedish and EU legal documents — propositioner, SOU, betänkanden, SFS, NJA, AD, HFD, AFS, JO, JK, EU regulations and directives, CJEU rulings, and ECHR rulings — collected from 8 official sources and stored as JSON + Markdown.",
+        "url": "https://juris.niclaslindstedt.se/",
+        "keywords": [
+          "Swedish law", "EU law", "rättsdata", "rättsfall", "lagstiftning",
+          "propositioner", "SOU", "SFS", "NJA", "EUR-Lex", "CJEU", "ECHR",
+          "open legal data", "legal informatics", "rättsinformatik"
+        ],
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "creator": {
+          "@type": "Person",
+          "name": "Niclas Lindstedt",
+          "url": "https://github.com/niclaslindstedt"
+        },
+        "distribution": [
+          {
+            "@type": "DataDownload",
+            "encodingFormat": "application/json",
+            "contentUrl": "https://github.com/niclaslindstedt/juris"
+          },
+          {
+            "@type": "DataDownload",
+            "encodingFormat": "text/markdown",
+            "contentUrl": "https://github.com/niclaslindstedt/juris"
+          }
+        ],
+        "inLanguage": ["sv", "en"]
+      }
+    </script>
+
+    <!-- JSON-LD: ItemList of supported data sources -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Data sources supported by juris",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Riksdagen — Swedish Parliament", "url": "https://data.riksdagen.se/" },
+          { "@type": "ListItem", "position": 2, "name": "Regeringen — Swedish Government", "url": "https://www.regeringen.se/" },
+          { "@type": "ListItem", "position": 3, "name": "Domstolsverket — Swedish courts", "url": "https://www.domstol.se/" },
+          { "@type": "ListItem", "position": 4, "name": "JO — Parliamentary Ombudsman", "url": "https://www.jo.se/" },
+          { "@type": "ListItem", "position": 5, "name": "JK — Chancellor of Justice", "url": "https://www.jk.se/" },
+          { "@type": "ListItem", "position": 6, "name": "Lagrummet — Swedish legal portal", "url": "https://www.lagrummet.se/" },
+          { "@type": "ListItem", "position": 7, "name": "EUR-Lex — EU law", "url": "https://eur-lex.europa.eu/" },
+          { "@type": "ListItem", "position": 8, "name": "Curia — Court of Justice of the EU", "url": "https://curia.europa.eu/" },
+          { "@type": "ListItem", "position": 9, "name": "HUDOC — European Court of Human Rights", "url": "https://hudoc.echr.coe.int/" }
+        ]
+      }
+    </script>
+
+    <!-- JSON-LD: ItemList of supported document types -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Document types collected by juris",
+        "numberOfItems": 21,
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Propositioner (prop)" },
+          { "@type": "ListItem", "position": 2, "name": "Motioner (mot)" },
+          { "@type": "ListItem", "position": 3, "name": "Betänkanden (bet)" },
+          { "@type": "ListItem", "position": 4, "name": "Riksdagsskrivelser (skr)" },
+          { "@type": "ListItem", "position": 5, "name": "Statens offentliga utredningar (SOU)" },
+          { "@type": "ListItem", "position": 6, "name": "Departementsserien (Ds)" },
+          { "@type": "ListItem", "position": 7, "name": "Kommittédirektiv (dir)" },
+          { "@type": "ListItem", "position": 8, "name": "Lagrådsremisser (lagr)" },
+          { "@type": "ListItem", "position": 9, "name": "Svensk författningssamling (SFS)" },
+          { "@type": "ListItem", "position": 10, "name": "Nytt juridiskt arkiv (NJA)" },
+          { "@type": "ListItem", "position": 11, "name": "Arbetsdomstolen (AD)" },
+          { "@type": "ListItem", "position": 12, "name": "Högsta förvaltningsdomstolen (HFD)" },
+          { "@type": "ListItem", "position": 13, "name": "Mark- och miljödomstolen (mod)" },
+          { "@type": "ListItem", "position": 14, "name": "Patent- och marknadsöverdomstolen (pmod)" },
+          { "@type": "ListItem", "position": 15, "name": "Justitieombudsmannen (JO)" },
+          { "@type": "ListItem", "position": 16, "name": "Justitiekanslern (JK)" },
+          { "@type": "ListItem", "position": 17, "name": "Myndighetsföreskrifter (foreskrift, AFS, HSLF-FS)" },
+          { "@type": "ListItem", "position": 18, "name": "EU regulations (eu_reg)" },
+          { "@type": "ListItem", "position": 19, "name": "EU directives (eu_dir)" },
+          { "@type": "ListItem", "position": 20, "name": "CJEU rulings (cjeu)" },
+          { "@type": "ListItem", "position": 21, "name": "ECHR rulings (echr)" }
+        ]
+      }
+    </script>
+
+    <!-- JSON-LD: BreadcrumbList for the homepage -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://juris.niclaslindstedt.se/" },
+          { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "https://juris.niclaslindstedt.se/docs" },
+          { "@type": "ListItem", "position": 3, "name": "Manual", "item": "https://juris.niclaslindstedt.se/manual" }
+        ]
       }
     </script>
 
@@ -146,42 +310,131 @@
           <p>
             <strong>juris</strong> is an open-source Python CLI that collects
             and normalizes Swedish and EU legal documents into a unified,
-            version-controllable database of JSON + Markdown files.
+            version-controllable database of JSON + Markdown files. It is
+            designed for legal researchers, journalists, civic-tech
+            developers, and AI/LLM pipelines that need a clean, reproducible
+            corpus of Swedish and European law.
+          </p>
+          <p>
+            <a href="https://github.com/niclaslindstedt/juris">GitHub repository</a>
+            &middot;
+            <a href="https://pypi.org/project/juris/">PyPI package</a>
+            &middot;
+            <a href="/docs">Documentation</a>
+            &middot;
+            <a href="/manual">CLI manual</a>
+            &middot;
+            <a href="/llms.txt">llms.txt</a>
           </p>
         </header>
+
         <section>
-          <h2>What juris collects</h2>
+          <h2>Quick start</h2>
+          <pre>pip install juris
+juris collect-all
+juris status</pre>
           <p>
-            21 document types across 8 official sources: Riksdagen
-            (propositioner, motioner, betänkanden, skrivelser), Regeringen
-            (SOU, Ds, kommittédirektiv, lagrådsremisser), Domstolsverket (NJA,
-            AD, HFD, mark- och miljödomstolen), JO and JK (ombudsmannabeslut),
-            Lagrummet (myndighetsföreskrifter, AFS, HSLF-FS), EUR-Lex (EU
-            regulations and directives), CJEU (Court of Justice of the EU
-            rulings), and HUDOC (European Court of Human Rights rulings).
+            Documents are written to
+            <code>data/{doc_type}/{session}/{id}.{json,md}</code>. JSON for
+            machines, Markdown with YAML frontmatter for humans and LLMs.
           </p>
         </section>
+
         <section>
-          <h2>Install</h2>
-          <pre>pip install juris</pre>
+          <h2>Why juris?</h2>
+          <ul>
+            <li><strong>One CLI, every Swedish source.</strong> Riksdagen, Regeringen, Domstolsverket, JO, JK, Lagrummet, EUR-Lex, CJEU (Curia), and HUDOC (ECHR) — all behind one async, rate-limited Python tool.</li>
+            <li><strong>Git-native storage.</strong> Plain JSON + Markdown means you can <code>git diff</code> changes to law over time and review them in a pull request.</li>
+            <li><strong>Incremental.</strong> State tracking under <code>.state/</code> resumes where you left off, skipping already-collected documents.</li>
+            <li><strong>PDF text extraction.</strong> Attachments are downloaded and full-text extracted via pymupdf, with graceful fallback.</li>
+            <li><strong>Agent-friendly.</strong> Ships <code>--help-agent</code>, <code>--debug-agent</code>, a <code>commands</code> index, and full man pages so AI coding agents can use juris without prior knowledge.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Document types (21)</h2>
           <p>
-            Source code on
-            <a href="https://github.com/niclaslindstedt/juris">GitHub</a>,
-            package on <a href="https://pypi.org/project/juris/">PyPI</a>.
+            Bills (<code>prop</code>), motions (<code>mot</code>),
+            committee reports (<code>bet</code>), parliamentary writs
+            (<code>skr</code>), official inquiries (<code>SOU</code>),
+            ministry memoranda (<code>Ds</code>), committee directives
+            (<code>dir</code>), council-of-legislation referrals
+            (<code>lagr</code>), statutes (<code>SFS</code>),
+            Supreme Court rulings (<code>NJA</code>), Labour Court
+            (<code>AD</code>), Supreme Administrative Court
+            (<code>HFD</code>), land &amp; environment courts
+            (<code>mod</code>, <code>pmod</code>), Parliamentary Ombudsman
+            decisions (<code>JO</code>), Chancellor of Justice decisions
+            (<code>JK</code>), agency regulations (<code>foreskrift</code>,
+            <code>AFS</code>, <code>HSLF-FS</code>), EU regulations
+            (<code>eu_reg</code>), EU directives (<code>eu_dir</code>),
+            CJEU rulings (<code>cjeu</code>), and ECHR rulings
+            (<code>echr</code>).
           </p>
         </section>
+
+        <section>
+          <h2>Data sources (8)</h2>
+          <ul>
+            <li><strong>Riksdagen</strong> — Swedish Parliament open data (JSON API, <code>data.riksdagen.se</code>)</li>
+            <li><strong>Regeringen</strong> — Swedish Government publications (web scraping, <code>regeringen.se</code>)</li>
+            <li><strong>Domstolsverket</strong> — Swedish courts (REST API, <code>domstol.se</code>)</li>
+            <li><strong>JO &amp; JK</strong> — Parliamentary Ombudsman + Chancellor of Justice (<code>jo.se</code> / <code>jk.se</code>)</li>
+            <li><strong>Lagrummet</strong> — agency regulations and guidelines (<code>lagrummet.se</code>)</li>
+            <li><strong>EUR-Lex</strong> — EU regulations and directives (SPARQL, <code>eur-lex.europa.eu</code>)</li>
+            <li><strong>Curia</strong> — Court of Justice of the EU (SPARQL, <code>curia.europa.eu</code>)</li>
+            <li><strong>HUDOC</strong> — European Court of Human Rights (JSON API, <code>hudoc.echr.coe.int</code>)</li>
+          </ul>
+        </section>
+
         <section>
           <h2>Documentation</h2>
           <ul>
-            <li><a href="/docs/overview">Overview</a></li>
-            <li><a href="/docs/architecture">Architecture</a></li>
-            <li><a href="/docs/collectors">Collectors</a></li>
-            <li><a href="/docs/document-model">Document model</a></li>
-            <li><a href="/docs/storage-format">Storage format</a></li>
-            <li><a href="/docs/data-sources">Data sources</a></li>
-            <li><a href="/docs/parsing-rules">Parsing rules</a></li>
-            <li><a href="/manual">CLI manual</a></li>
+            <li><a href="/docs/overview">Overview</a> — what juris does and who it's for</li>
+            <li><a href="/docs/architecture">Architecture</a> — modules, data flow, async pipeline</li>
+            <li><a href="/docs/collectors">Collectors</a> — auto-discovery framework and adding new sources</li>
+            <li><a href="/docs/document-model">Document model</a> — Pydantic schema, enums, validation</li>
+            <li><a href="/docs/storage-format">Storage format</a> — directory layout, JSON + Markdown shapes</li>
+            <li><a href="/docs/data-sources">Data sources</a> — every source's API, quirks, and licensing</li>
+            <li><a href="/docs/parsing-rules">Parsing rules</a> — text normalization, ID building, attachments</li>
           </ul>
+        </section>
+
+        <section>
+          <h2>CLI commands</h2>
+          <ul>
+            <li><a href="/manual/juris"><code>juris</code></a> — top-level entry point</li>
+            <li><a href="/manual/collect"><code>juris collect</code></a> — collect from one source</li>
+            <li><a href="/manual/collect-type"><code>juris collect-type</code></a> — collect a single document type</li>
+            <li><a href="/manual/collect-all"><code>juris collect-all</code></a> — collect every source × type combination</li>
+            <li><a href="/manual/status"><code>juris status</code></a> — incremental-collection state report</li>
+            <li><a href="/manual/stats"><code>juris stats</code></a> — corpus statistics</li>
+            <li><a href="/manual/man"><code>juris man</code></a> — built-in man-page viewer</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Tech stack</h2>
+          <p>
+            Python 3.11+, async/await, <code>httpx</code> (HTTP),
+            <code>pydantic</code> (validation), <code>beautifulsoup4</code> +
+            <code>lxml</code> (HTML/XML), <code>click</code> (CLI),
+            <code>pymupdf</code> (PDF text extraction), and
+            <code>pyyaml</code> (Markdown frontmatter). Strict
+            <code>mypy</code>, <code>ruff</code> linting, pytest with
+            <code>asyncio_mode = auto</code>.
+          </p>
+        </section>
+
+        <section>
+          <h2>License</h2>
+          <p>
+            MIT — see
+            <a href="https://github.com/niclaslindstedt/juris/blob/main/LICENSE">LICENSE</a>.
+            Source on
+            <a href="https://github.com/niclaslindstedt/juris">GitHub</a>,
+            package on <a href="https://pypi.org/project/juris/">PyPI</a>.
+          </p>
         </section>
       </noscript>
     </div>
