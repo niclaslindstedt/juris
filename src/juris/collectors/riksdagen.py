@@ -514,6 +514,15 @@ class RiksdagenCollector(BaseCollector):
                     continue
 
                 dok_id = item.get("dok_id", "")
+
+                # Skip calendar placeholders for not-yet-published documents.
+                # These appear in dokumentlista via the planning system ("Brus")
+                # with status "planerat"; the document endpoints 404 until the
+                # item is actually published, at which point a rerun picks it up.
+                if item.get("kalla") == "Brus" or item.get("status") == "planerat":
+                    logger.debug("Skipping planned item %s", dok_id)
+                    continue
+
                 logger.debug("Fetching %s: %s", dok_id, item.get("titel", "")[:60])
 
                 # Fetch full HTML content (skip when only metadata is wanted)
