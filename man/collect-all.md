@@ -37,6 +37,10 @@ Use `--dry-run` to preview the full collection plan before running.
   Accepts a duration like `6h`, `30m`, `1d` (or seconds as a bare integer). Pass `0` to disable.
   Default: `6h`. The check only fires when the invocation itself has no filters (no `--since`,
   `--until`, `--session`, or `--limit`), so filtered runs always execute.
+- `--validate` — Before skipping an already-collected document, verify the JSON parses, the
+  companion `.md` file exists, and every attachment with a recorded `local_path` is present and
+  non-empty on disk. Failed checks trigger a re-fetch. Disables `--max-age` (the freshness
+  short-circuit cannot be combined with on-disk validation). Default: disabled.
 - `--dry-run` — Show the collection plan (provider per type), then exit.
 
 ## COLLECTION PLAN
@@ -77,6 +81,12 @@ Skip types that ran within the last day (longer freshness window):
 juris collect-all --max-age 1d
 ```
 
+Validate on-disk completeness for every enumerated document and re-fetch the broken ones:
+
+```sh
+juris collect-all --validate
+```
+
 ## INCREMENTAL BEHAVIOR
 
 `collect-all` does two layers of work avoidance:
@@ -89,6 +99,13 @@ juris collect-all --max-age 1d
 2. **Auto-incremental (`since`)** — When a pair is not skipped by freshness,
    `since` is auto-set to `last_fetched_date - 2 days` so the collector only
    enumerates documents newer than what is already stored.
+
+The per-document skip — for each enumerated doc the source returns — checks
+only that the JSON file exists on disk. Pass `--validate` for a deeper check:
+the JSON must parse into a `Document`, the `.md` must exist, and every
+attachment with a `local_path` must exist and be non-empty. Any failure causes
+the doc to be re-fetched in this run. `--validate` disables the `--max-age`
+freshness short-circuit so the validation actually runs.
 
 ## SEE ALSO
 

@@ -6,7 +6,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from juris.models import Attachment, DocType, Document, Source
-from juris.storage import document_exists, load_document, save_document
+from juris.storage import (
+    doc_dir,
+    document_exists,
+    document_valid,
+    load_document,
+    save_document,
+)
 
 
 class TestStorageRoundtrip:
@@ -102,6 +108,90 @@ class TestStorageRoundtrip:
         assert len(loaded.attachments) == 1
         assert loaded.attachments[0].filename == "sou-2024_42.pdf"
         assert loaded.attachments[0].mime_type == "application/pdf"
+
+    def _make_pdf_doc(self, data_dir: Path, *, attachment_on_disk: bool = True) -> Document:
+        """Save a doc with one PDF attachment; optionally drop the PDF on disk."""
+        pdf_rel = "prop/2024-25/prop-2024-25_208.pdf"
+        doc = Document(
+            doc_id="prop-2024/25:208",
+            doc_type=DocType.PROP,
+            designation="208",
+            session="2024/25",
+            title="Prop with attachment",
+            date=date(2025, 3, 15),
+            source=Source.RIKSDAGEN,
+            fetched_at=datetime.now(tz=UTC),
+            attachments=[
+                Attachment(
+                    filename="prop-2024-25_208.pdf",
+                    url="https://example.com/prop.pdf",
+                    mime_type="application/pdf",
+                    local_path=pdf_rel,
+                )
+            ],
+        )
+        save_document(doc, data_dir)
+        if attachment_on_disk:
+            pdf_path = data_dir / pdf_rel
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            pdf_path.write_bytes(b"%PDF-1.4 fake bytes")
+        return doc
+
+    def test_document_valid_happy_path(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = self._make_pdf_doc(data_dir)
+        assert document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_missing_markdown(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = self._make_pdf_doc(data_dir)
+        md_path = doc_dir(data_dir, doc.doc_type, doc.session) / "prop-2024-25_208.md"
+        md_path.unlink()
+        assert not document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_missing_attachment(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = self._make_pdf_doc(data_dir, attachment_on_disk=False)
+        assert not document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_empty_attachment(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = self._make_pdf_doc(data_dir)
+        # Zero-byte attachment is treated as broken.
+        (data_dir / "prop/2024-25/prop-2024-25_208.pdf").write_bytes(b"")
+        assert not document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_corrupt_json(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = self._make_pdf_doc(data_dir)
+        json_path = doc_dir(data_dir, doc.doc_type, doc.session) / "prop-2024-25_208.json"
+        json_path.write_text("{ not valid json")
+        assert not document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_no_attachments(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        doc = Document(
+            doc_id="echr-12345/20",
+            doc_type=DocType.ECHR,
+            designation="12345/20",
+            title="Case of X v. Sweden",
+            date=date(2023, 6, 1),
+            source=Source.HUDOC,
+            fetched_at=datetime.now(tz=UTC),
+        )
+        save_document(doc, data_dir)
+        assert document_valid(doc.doc_id, doc.doc_type, doc.session, data_dir)
+
+    def test_document_valid_missing_file(self, tmp_path: Path) -> None:
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        assert not document_valid("prop-9999/99:1", DocType.PROP, "9999/99", data_dir)
 
     def test_roundtrip_minimal_doc(self, tmp_path: Path) -> None:
         data_dir = tmp_path / "data"

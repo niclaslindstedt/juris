@@ -139,7 +139,7 @@ def _generate_agent_help() -> str:
     lines.append("```")
     lines.append(
         "juris collect-all [--since YYYY-MM-DD] [--until YYYY-MM-DD] "
-        "[--limit N] [--max-age 6h] [--concurrent] [--dry-run]"
+        "[--limit N] [--max-age 6h] [--validate] [--concurrent] [--dry-run]"
     )
     lines.append("```")
     lines.append("")
@@ -167,6 +167,11 @@ def _generate_agent_help() -> str:
         "- `--max-age DUR` — Skip (source, type) pairs whose last unfiltered run "
         "finished within this window (e.g. `6h`, `30m`, `1d`; `0` disables). "
         "Default for `collect-all` is `6h`; off for `collect`/`collect-type`."
+    )
+    lines.append(
+        "- `--validate` (`collect-all`) — Before skipping, verify JSON parses, "
+        "`.md` exists, and every attachment with a `local_path` is present and "
+        "non-empty. Failed checks trigger a re-fetch. Disables `--max-age`."
     )
     lines.append("")
 
@@ -766,6 +771,17 @@ def collect_type(
         "window (e.g. '6h', '30m', '1d'). '0' disables. Default '6h'."
     ),
 )
+@click.option(
+    "--validate",
+    is_flag=True,
+    default=False,
+    help=(
+        "Before skipping an existing document, verify the JSON parses, the "
+        ".md file is present, and every attachment with a recorded local_path "
+        "exists and is non-empty. Failures trigger a re-fetch. Disables the "
+        "--max-age freshness short-circuit."
+    ),
+)
 @click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
 @click.option(
     "--concurrent/--sequential",
@@ -788,6 +804,7 @@ def collect_all(
     skip_content: bool,
     update_index: bool,
     max_age: str,
+    validate: bool,
     dry_run: bool,
     concurrent: bool,
     max_concurrency: int,
@@ -876,6 +893,7 @@ def collect_all(
                                 progress=progress,
                                 update_index=update_index,
                                 max_age_seconds=max_age_seconds,
+                                validate=validate,
                             )
                             tracker.mark_finished(dt.value, collected, skipped)
                         except Exception as exc:
@@ -921,6 +939,7 @@ def collect_all(
                         progress=progress,
                         update_index=update_index,
                         max_age_seconds=max_age_seconds,
+                        validate=validate,
                     )
                     tracker.mark_finished(dt.value, collected, skipped)
                 except Exception as exc:

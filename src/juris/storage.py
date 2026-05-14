@@ -130,3 +130,41 @@ def document_exists(doc_id: str, doc_type: DocType, session: str | None, base_di
     directory = doc_dir(base_dir, doc_type, session)
     filename = sanitize_filename(doc_id)
     return (directory / f"{filename}.json").exists()
+
+
+def document_valid(
+    doc_id: str,
+    doc_type: DocType,
+    session: str | None,
+    base_dir: Path,
+) -> bool:
+    """Deeper integrity check before skipping a document.
+
+    Returns True only when:
+      - the JSON file exists and parses into a :class:`Document`
+      - the companion ``.md`` file exists
+      - every attachment with a recorded ``local_path`` is present and non-empty
+
+    Any failure returns False so the caller can re-fetch.
+    """
+    directory = doc_dir(base_dir, doc_type, session)
+    filename = sanitize_filename(doc_id)
+    json_path = directory / f"{filename}.json"
+    md_path = directory / f"{filename}.md"
+    if not json_path.exists() or not md_path.exists():
+        return False
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        doc = Document.model_validate(data)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    for att in doc.attachments:
+        if not att.local_path:
+            continue
+        att_path = base_dir / att.local_path
+        try:
+            if not att_path.exists() or att_path.stat().st_size == 0:
+                return False
+        except OSError:
+            return False
+    return True

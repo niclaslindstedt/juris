@@ -18,7 +18,7 @@ from juris.index import (
 )
 from juris.models import DocType, Source
 from juris.state import load_state, save_state
-from juris.storage import document_exists, save_document
+from juris.storage import document_exists, document_valid, save_document
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ async def collect_from_source(
     progress: ProgressCallback | None = None,
     update_index: bool = True,
     max_age_seconds: int | None = None,
+    validate: bool = False,
 ) -> tuple[int, int]:
     """Run collection for a single (source, doc_type) pair.
 
@@ -89,11 +90,14 @@ async def collect_from_source(
 
     # Freshness short-circuit: a previous unfiltered run finished recently
     # enough that we trust skipping this entire (source, doc_type) pair.
+    # Disabled in validate mode — the whole point is to re-check on-disk
+    # state, which we can't do without enumerating.
     if (
         max_age_seconds
         and max_age_seconds > 0
         and full_run
         and skip_existing
+        and not validate
         and state.last_full_run_at
     ):
         try:
@@ -184,12 +188,20 @@ async def collect_from_source(
 
             path: Path | None = None
             try:
-                exists = document_exists(
-                    doc.doc_id,
-                    doc.doc_type,
-                    doc.session,
-                    data_dir,
-                )
+                if validate:
+                    exists = document_valid(
+                        doc.doc_id,
+                        doc.doc_type,
+                        doc.session,
+                        data_dir,
+                    )
+                else:
+                    exists = document_exists(
+                        doc.doc_id,
+                        doc.doc_type,
+                        doc.session,
+                        data_dir,
+                    )
                 if skip_existing and exists:
                     skipped += 1
                     if progress:
