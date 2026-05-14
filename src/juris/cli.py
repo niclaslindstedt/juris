@@ -38,6 +38,7 @@ from juris.logging import (
 from juris.models import DocType, SearchResult, Source
 from juris.pipeline import collect_from_source
 from juris.report import CollectionReport, ReportDiff
+from juris.utils import parse_duration
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ def _generate_agent_help() -> str:
     lines.append("```")
     lines.append(
         "juris collect-all [--since YYYY-MM-DD] [--until YYYY-MM-DD] "
-        "[--limit N] [--concurrent] [--dry-run]"
+        "[--limit N] [--max-age 6h] [--concurrent] [--dry-run]"
     )
     lines.append("```")
     lines.append("")
@@ -162,6 +163,11 @@ def _generate_agent_help() -> str:
     lines.append("- `--limit N` — Max documents to collect")
     lines.append("- `--skip-content` — Metadata only (faster, no full text)")
     lines.append("- `--no-skip-existing` — Re-collect and overwrite existing documents")
+    lines.append(
+        "- `--max-age DUR` — Skip (source, type) pairs whose last unfiltered run "
+        "finished within this window (e.g. `6h`, `30m`, `1d`; `0` disables). "
+        "Default for `collect-all` is `6h`; off for `collect`/`collect-type`."
+    )
     lines.append("")
 
     # Output format
@@ -303,6 +309,16 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+def _parse_max_age(value: str | None) -> int:
+    """Parse a ``--max-age`` flag value into seconds (0 = disabled)."""
+    if value is None:
+        return 0
+    try:
+        return parse_duration(value)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--max-age") from exc
+
+
 def _format_elapsed(seconds: float) -> str:
     """Format seconds as a human-readable duration."""
     s = int(seconds)
@@ -401,6 +417,12 @@ class _ProgressTracker:
             self.total = total
             self._render()
 
+    def on_fresh(self, age_seconds: float, max_age_seconds: int) -> None:
+        click.echo(
+            f"  {self.label}: fresh — last run {_format_elapsed(age_seconds)} ago "
+            f"(< --max-age {_format_elapsed(max_age_seconds)}), skipping"
+        )
+
     def on_finish(self) -> None:
         click.echo()  # newline after progress
 
@@ -433,6 +455,12 @@ class _VerboseReporter:
 
     def on_skip(self, doc_id: str) -> None:
         click.echo(f"  skip {doc_id} (exists)")
+
+    def on_fresh(self, age_seconds: float, max_age_seconds: int) -> None:
+        click.echo(
+            f"  fresh — last run {_format_elapsed(age_seconds)} ago "
+            f"(< --max-age {_format_elapsed(max_age_seconds)}), skipping"
+        )
 
     def on_finish(self) -> None:
         pass
@@ -519,6 +547,14 @@ def main(ctx: click.Context, data_dir: str, verbose: bool) -> None:
     default=True,
     help="Populate .index/ as a side effect of this collection (default on).",
 )
+@click.option(
+    "--max-age",
+    default="0",
+    help=(
+        "Skip the run entirely if a previous unfiltered run finished within this "
+        "window (e.g. '6h', '30m', '1d'). '0' disables (default for `collect`)."
+    ),
+)
 @click.pass_context
 def collect(
     ctx: click.Context,
@@ -531,10 +567,12 @@ def collect(
     skip_existing: bool,
     skip_content: bool,
     update_index: bool,
+    max_age: str,
 ) -> None:
     """Collect documents from a source."""
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
+    max_age_seconds = _parse_max_age(max_age)
 
     collector_cls = get_collector_class(source)
     if dt not in collector_cls.supported_doc_types:
@@ -561,6 +599,7 @@ def collect(
                 skip_content=skip_content,
                 progress=progress,
                 update_index=update_index,
+                max_age_seconds=max_age_seconds,
             )
             click.echo(f"\nDone: {collected} collected, {skipped} skipped")
         finally:
@@ -592,6 +631,14 @@ def collect(
     default=True,
     help="Populate .index/ as a side effect of this collection (default on).",
 )
+@click.option(
+    "--max-age",
+    default="0",
+    help=(
+        "Skip the run entirely if a previous unfiltered run finished within this "
+        "window (e.g. '6h', '30m', '1d'). '0' disables (default for `collect-type`)."
+    ),
+)
 @click.option("--dry-run", is_flag=True, help="Show which providers would be used, then exit.")
 @click.option(
     "--all-providers",
@@ -609,6 +656,7 @@ def collect_type(
     skip_existing: bool,
     skip_content: bool,
     update_index: bool,
+    max_age: str,
     dry_run: bool,
     all_providers: bool,
 ) -> None:
@@ -619,6 +667,7 @@ def collect_type(
     """
     data_dir: Path = ctx.obj["data_dir"]
     dt = DocType(doc_type)
+    max_age_seconds = _parse_max_age(max_age)
 
     doc_type_providers = get_doc_type_providers()
     preferred_providers = get_preferred_providers()
@@ -672,6 +721,7 @@ def collect_type(
                     skip_content=skip_content,
                     progress=progress,
                     update_index=update_index,
+                    max_age_seconds=max_age_seconds,
                 )
                 click.echo(f"  {source_name}: {collected} collected, {skipped_count} skipped")
                 grand_collected += collected
@@ -708,6 +758,14 @@ def collect_type(
     default=True,
     help="Populate .index/ as a side effect of this collection (default on).",
 )
+@click.option(
+    "--max-age",
+    default="6h",
+    help=(
+        "Skip (source, type) pairs whose last unfiltered run finished within this "
+        "window (e.g. '6h', '30m', '1d'). '0' disables. Default '6h'."
+    ),
+)
 @click.option("--dry-run", is_flag=True, help="Show the plan, then exit.")
 @click.option(
     "--concurrent/--sequential",
@@ -729,6 +787,7 @@ def collect_all(
     skip_existing: bool,
     skip_content: bool,
     update_index: bool,
+    max_age: str,
     dry_run: bool,
     concurrent: bool,
     max_concurrency: int,
@@ -749,6 +808,7 @@ def collect_all(
       ds, lagr             ->  regeringen (sole provider)
     """
     data_dir: Path = ctx.obj["data_dir"]
+    max_age_seconds = _parse_max_age(max_age)
 
     preferred_providers = get_preferred_providers()
     doc_type_providers = get_doc_type_providers()
@@ -815,6 +875,7 @@ def collect_all(
                                 skip_content=skip_content,
                                 progress=progress,
                                 update_index=update_index,
+                                max_age_seconds=max_age_seconds,
                             )
                             tracker.mark_finished(dt.value, collected, skipped)
                         except Exception as exc:
@@ -859,6 +920,7 @@ def collect_all(
                         skip_content=skip_content,
                         progress=progress,
                         update_index=update_index,
+                        max_age_seconds=max_age_seconds,
                     )
                     tracker.mark_finished(dt.value, collected, skipped)
                 except Exception as exc:

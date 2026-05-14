@@ -22,6 +22,7 @@ class CollectionState(BaseModel):
     total_collected: int = 0
     total_available: int | None = None  # API-reported total matching documents
     last_run_at: str | None = None  # ISO datetime
+    last_full_run_at: str | None = None  # ISO datetime of last fully-completed unfiltered run
 
 
 def _state_path(base_dir: Path, source: Source, doc_type: DocType) -> Path:

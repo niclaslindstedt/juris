@@ -36,6 +36,7 @@ runs can skip already-collected documents.
 - `--limit N` — Maximum number of documents to collect. Useful for testing or sampling a source.
 - `--skip-existing / --no-skip-existing` — Skip documents that have already been saved to disk. Enabled by default. Use `--no-skip-existing` to re-collect and overwrite.
 - `--skip-content / --no-skip-content` — Skip fetching full text content (HTML, PDF). Collects metadata only, which is much faster. Disabled by default.
+- `--max-age DUR` — Skip the run entirely if a previous unfiltered run finished within this window (e.g. `6h`, `30m`, `1d`). Default `0` (disabled). Only fires when the invocation has no `--session`, `--since`, `--until`, or `--limit`.
 
 ## SOURCE DETAILS
 

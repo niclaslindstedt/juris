@@ -88,9 +88,14 @@ stored as JSON files in the `.state/` directory. Tracks:
 - `last_fetched_date`: Newest document date seen (for resuming)
 - `last_page`: Pagination checkpoint
 - `total_collected`: Running count
-- `last_run_at`: Timestamp of last run
+- `total_available`: API-reported total when known
+- `last_run_at`: Timestamp of last run (always updated)
+- `last_full_run_at`: Timestamp of last fully-completed unfiltered run;
+  drives `--max-age` so repeated `collect-all` invocations can skip
+  freshly-completed (source, type) pairs entirely
 
-This allows subsequent collection runs to pick up where they left off.
+This allows subsequent collection runs to pick up where they left off,
+and lets short-interval re-runs short-circuit without API calls.
 
 ### utils.py — Shared Utilities
 

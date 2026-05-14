@@ -147,6 +147,26 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
+_DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd]?)\s*$", re.IGNORECASE)
+_DURATION_UNITS = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_duration(text: str) -> int:
+    """Parse a duration string like ``"6h"``, ``"30m"``, ``"1d"``, ``"0"`` into seconds.
+
+    A bare integer is treated as seconds. ``"0"`` (or empty) means "disabled".
+    Raises ``ValueError`` for malformed input.
+    """
+    if text is None:
+        return 0
+    m = _DURATION_RE.match(text)
+    if not m:
+        raise ValueError(f"invalid duration: {text!r} (expected e.g. '6h', '30m', '1d', '0')")
+    n = int(m.group(1))
+    unit = m.group(2).lower()
+    return n * _DURATION_UNITS[unit]
+
+
 def build_doc_id(doc_type: DocType, designation: str, session: str | None = None) -> str:
     """Build a canonical document ID.
 

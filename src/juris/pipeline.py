@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -45,6 +45,8 @@ class ProgressCallback(Protocol):
     # Optional methods (callers use hasattr before invoking):
     #   on_total(total: int) -> None  — fired once when the API-reported
     #       total document count becomes known (typically after page 1).
+    #   on_fresh(age_seconds: float, max_age_seconds: int) -> None — fired
+    #       when the run is skipped entirely because state is fresh enough.
 
 
 async def collect_from_source(
@@ -60,6 +62,7 @@ async def collect_from_source(
     skip_content: bool = False,
     progress: ProgressCallback | None = None,
     update_index: bool = True,
+    max_age_seconds: int | None = None,
 ) -> tuple[int, int]:
     """Run collection for a single (source, doc_type) pair.
 
@@ -71,12 +74,40 @@ async def collect_from_source(
     The index is marked ``complete=True`` only when the run had no filters
     (no ``session``, ``since``, ``until``, or ``limit``) so the source was
     fully enumerated.
+
+    When ``max_age_seconds`` is set (>0) and the invocation has no filters
+    and ``skip_existing`` is true, the run is skipped entirely if a previous
+    unfiltered run completed within that window — useful for avoiding
+    redundant enumeration when ``collect-all`` is invoked repeatedly.
     """
     src = Source(source_name)
     collector = get_collector_class(source_name)()
     state = load_state(data_dir, src, dt)
 
     user_since = since  # remember caller's input before auto-incremental fills it in
+    full_run = user_since is None and until is None and session is None and limit is None
+
+    # Freshness short-circuit: a previous unfiltered run finished recently
+    # enough that we trust skipping this entire (source, doc_type) pair.
+    if (
+        max_age_seconds
+        and max_age_seconds > 0
+        and full_run
+        and skip_existing
+        and state.last_full_run_at
+    ):
+        try:
+            last = datetime.fromisoformat(state.last_full_run_at)
+            age = (datetime.now(tz=UTC) - last).total_seconds()
+        except ValueError:
+            age = None
+        if age is not None and age < max_age_seconds:
+            if progress and hasattr(progress, "on_fresh"):
+                progress.on_fresh(age, max_age_seconds)
+            if progress:
+                progress.on_finish()
+            await collector.close()
+            return (0, 0)
 
     # Auto-set since from state for incremental runs
     if since is None and skip_existing and state.last_fetched_date:
@@ -109,6 +140,7 @@ async def collect_from_source(
             rindex = RemoteIndex(source=src, doc_type=dt, complete=False)
 
     total_reported = False
+    iteration_completed = False
 
     try:
         async for doc in collector.collect(
@@ -180,11 +212,15 @@ async def collect_from_source(
             finally:
                 if progress and hasattr(progress, "end_document"):
                     progress.end_document(doc.doc_id, path)
+        iteration_completed = True
     finally:
         # Always persist state so that a re-run can skip already-collected
         # documents — even after Ctrl+C or an API failure mid-collection.
         if collector.total_available is not None:
             state.total_available = collector.total_available
+        # Only mark a full successful unfiltered run for freshness skipping.
+        if iteration_completed and full_run:
+            state.last_full_run_at = datetime.now(tz=UTC).isoformat()
         save_state(state, data_dir)
 
         # Flush remaining partial index page and save the index. We only mark
@@ -196,7 +232,6 @@ async def collect_from_source(
                 _flush_page(rindex, page_num, page_doc_ids, page_indexed, page_dates, data_dir)
             if collector.total_available is not None:
                 rindex.total_available = collector.total_available
-            full_run = user_since is None and until is None and session is None and limit is None
             if full_run:
                 rindex.complete = True
                 rindex.error = None

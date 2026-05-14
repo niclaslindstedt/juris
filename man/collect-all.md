@@ -33,6 +33,10 @@ Use `--dry-run` to preview the full collection plan before running.
 - `--limit N` — Maximum number of documents per document type.
 - `--skip-existing / --no-skip-existing` — Skip already collected documents. Default: enabled.
 - `--skip-content / --no-skip-content` — Skip fetching full text (metadata only). Default: disabled.
+- `--max-age DUR` — Skip (source, type) pairs whose last unfiltered run finished within this window.
+  Accepts a duration like `6h`, `30m`, `1d` (or seconds as a bare integer). Pass `0` to disable.
+  Default: `6h`. The check only fires when the invocation itself has no filters (no `--since`,
+  `--until`, `--session`, or `--limit`), so filtered runs always execute.
 - `--dry-run` — Show the collection plan (provider per type), then exit.
 
 ## COLLECTION PLAN
@@ -60,6 +64,31 @@ Collect everything with a limit of 10 per type:
 ```sh
 juris collect-all --limit 10
 ```
+
+Force a re-run even if the last collect-all was recent:
+
+```sh
+juris collect-all --max-age 0
+```
+
+Skip types that ran within the last day (longer freshness window):
+
+```sh
+juris collect-all --max-age 1d
+```
+
+## INCREMENTAL BEHAVIOR
+
+`collect-all` does two layers of work avoidance:
+
+1. **Freshness short-circuit (`--max-age`)** — When a (source, type) pair's
+   last unfiltered run completed within the window, the pair is skipped
+   entirely with no API calls. Tracked via `last_full_run_at` in
+   `.state/{source}_{doc_type}.json`. Only counts fully completed unfiltered
+   runs; failed or partial runs do not refresh the timestamp.
+2. **Auto-incremental (`since`)** — When a pair is not skipped by freshness,
+   `since` is auto-set to `last_fetched_date - 2 days` so the collector only
+   enumerates documents newer than what is already stored.
 
 ## SEE ALSO
 

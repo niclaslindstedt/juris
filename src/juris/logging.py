@@ -271,6 +271,10 @@ class CompositeProgress:
         if hasattr(self._ui, "on_total"):
             self._ui.on_total(total)
 
+    def on_fresh(self, age_seconds: float, max_age_seconds: int) -> None:
+        if hasattr(self._ui, "on_fresh"):
+            self._ui.on_fresh(age_seconds, max_age_seconds)
+
     def on_finish(self) -> None:
         self._logger.on_finish()
         if hasattr(self._ui, "on_finish"):

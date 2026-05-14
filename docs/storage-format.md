@@ -145,7 +145,9 @@ Each state file tracks the progress of one (source, doc_type) collection:
   "last_fetched_date": "2025-06-01",
   "last_page": 3,
   "total_collected": 47,
-  "last_run_at": "2025-06-01T10:45:00"
+  "total_available": 1234,
+  "last_run_at": "2025-06-01T10:45:00",
+  "last_full_run_at": "2025-06-01T10:45:00"
 }
 ```
 
@@ -158,22 +160,32 @@ Each state file tracks the progress of one (source, doc_type) collection:
 | `last_fetched_date` | ISO date of the newest document seen |
 | `last_page` | Pagination checkpoint (page number or offset) |
 | `total_collected` | Running count of documents collected |
-| `last_run_at` | ISO datetime of the last collection run |
+| `total_available` | API-reported total matching documents (when known) |
+| `last_run_at` | ISO datetime of the last collection run (always updated) |
+| `last_full_run_at` | ISO datetime of the last fully-completed unfiltered run — drives `--max-age` |
 
 ### Incremental Behavior
 
-When you run a collection command, the pipeline checks the state file
-for the relevant (source, doc_type) pair:
+When you run a collection command, the pipeline applies two
+work-avoidance layers:
 
-1. If no state exists, collection starts from scratch
-2. If state exists, `last_fetched_date` is used as the `since` parameter
-   to skip already-collected time ranges
-3. After the run completes, the state is updated with the new counts
-   and timestamp
+1. **Freshness short-circuit (`--max-age`)** — If `last_full_run_at`
+   is within the configured window *and* the invocation has no
+   filters (`--session`, `--since`, `--until`, `--limit`), the run
+   is skipped entirely with no API calls. `last_full_run_at` is set
+   only when an unfiltered run completes successfully, so partial
+   or failed runs do not refresh the timestamp. Default window is
+   `6h` for `collect-all`, off for `collect` and `collect-type`.
+2. **Auto-incremental (`since`)** — When the run is not skipped by
+   freshness, `last_fetched_date - 2 days` is used as the `since`
+   parameter so the collector only enumerates documents newer than
+   what is already stored. (The 2-day buffer accounts for documents
+   that may appear with a publication date slightly in the past.)
 
 Additionally, the pipeline checks `document_exists()` before saving
-each document, skipping any that are already on disk. This double-check
-prevents duplicates even when date-based filtering is imprecise.
+each document, skipping any that are already on disk. This triple-check
+(freshness + `since` + per-document existence) keeps repeated runs cheap
+and prevents duplicates even when date-based filtering is imprecise.
 
 ## Storage Functions
 

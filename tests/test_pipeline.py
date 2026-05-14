@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -244,6 +244,121 @@ class TestIndexSideEffect:
 
         assert seen == [42]
 
+
+class TestMaxAge:
+    """Freshness short-circuit via ``max_age_seconds``."""
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_full_run_records_last_full_run_at(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        await collect_from_source("regeringen", DocType.DS, tmp_data_dir, skip_existing=False)
+
+        state = load_state(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert state.last_full_run_at is not None
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_filtered_run_does_not_record_last_full_run_at(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        await collect_from_source(
+            "regeringen", DocType.DS, tmp_data_dir, limit=1, skip_existing=False
+        )
+
+        state = load_state(tmp_data_dir, Source.REGERINGEN, DocType.DS)
+        assert state.last_full_run_at is None
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_skips_when_fresh(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        # Pretend a full run just completed.
+        state = CollectionState(
+            source=Source.REGERINGEN,
+            doc_type=DocType.DS,
+            last_full_run_at=datetime.now(tz=UTC).isoformat(),
+        )
+        save_state(state, tmp_data_dir)
+
+        collected, skipped = await collect_from_source(
+            "regeringen", DocType.DS, tmp_data_dir, max_age_seconds=3600
+        )
+
+        assert (collected, skipped) == (0, 0)
+        # Collector's collect() should not have been invoked.
+        assert _patch_collector.received_since is None
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_runs_when_stale(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        old = datetime.now(tz=UTC) - timedelta(hours=24)
+        state = CollectionState(
+            source=Source.REGERINGEN,
+            doc_type=DocType.DS,
+            last_full_run_at=old.isoformat(),
+        )
+        save_state(state, tmp_data_dir)
+
+        collected, skipped = await collect_from_source(
+            "regeringen", DocType.DS, tmp_data_dir, max_age_seconds=3600, skip_existing=False
+        )
+
+        assert collected == 1
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_ignored_with_filters(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        """Filtered invocations bypass the freshness short-circuit."""
+        state = CollectionState(
+            source=Source.REGERINGEN,
+            doc_type=DocType.DS,
+            last_full_run_at=datetime.now(tz=UTC).isoformat(),
+        )
+        save_state(state, tmp_data_dir)
+
+        collected, skipped = await collect_from_source(
+            "regeringen",
+            DocType.DS,
+            tmp_data_dir,
+            limit=1,
+            max_age_seconds=3600,
+            skip_existing=False,
+        )
+
+        assert collected == 1
+
+    @pytest.mark.usefixtures("_patch_collector")
+    async def test_on_fresh_callback_fires(
+        self, tmp_data_dir: Path, _patch_collector: _FakeCollector
+    ) -> None:
+        state = CollectionState(
+            source=Source.REGERINGEN,
+            doc_type=DocType.DS,
+            last_full_run_at=datetime.now(tz=UTC).isoformat(),
+        )
+        save_state(state, tmp_data_dir)
+
+        seen: list[tuple[float, int]] = []
+
+        class _Capture:
+            def on_save(self, doc_id: str, path: Path) -> None: ...
+            def on_skip(self, doc_id: str) -> None: ...
+            def on_fresh(self, age_seconds: float, max_age_seconds: int) -> None:
+                seen.append((age_seconds, max_age_seconds))
+
+            def on_finish(self) -> None: ...
+
+        await collect_from_source(
+            "regeringen", DocType.DS, tmp_data_dir, max_age_seconds=3600, progress=_Capture()
+        )
+
+        assert len(seen) == 1
+        assert seen[0][1] == 3600
+
+
+class TestDedup:
     @pytest.mark.usefixtures("_patch_collector")
     async def test_dedup_against_existing_entries(
         self, tmp_data_dir: Path, _patch_collector: _FakeCollector

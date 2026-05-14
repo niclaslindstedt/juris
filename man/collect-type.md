@@ -43,6 +43,7 @@ given type. Use `--dry-run` to preview which providers would be used.
 - `--limit N` — Maximum number of documents per provider.
 - `--skip-existing / --no-skip-existing` — Skip already collected documents. Default: enabled.
 - `--skip-content / --no-skip-content` — Skip fetching full text (metadata only). Default: disabled.
+- `--max-age DUR` — Skip a provider entirely if its last unfiltered run finished within this window (e.g. `6h`, `1d`). Default `0` (disabled). Only fires for unfiltered invocations.
 - `--dry-run` — Show which providers would be used, then exit without collecting.
 - `--all-providers` — Use all providers that support the type, not just the preferred one.
 

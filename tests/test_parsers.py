@@ -12,7 +12,13 @@ from juris.collectors.domstol import (
 )
 from juris.collectors.regeringen import _parse_designation
 from juris.models import DocType
-from juris.utils import build_doc_id, html_to_text, parse_swedish_date, sanitize_filename
+from juris.utils import (
+    build_doc_id,
+    html_to_text,
+    parse_duration,
+    parse_swedish_date,
+    sanitize_filename,
+)
 
 # ---------------------------------------------------------------------------
 # _parse_nja_reference
@@ -217,3 +223,35 @@ class TestHtmlToText:
         result = html_to_text(html)
         assert "color" not in result
         assert "Content" in result
+
+
+class TestParseDuration:
+    def test_zero(self) -> None:
+        assert parse_duration("0") == 0
+
+    def test_seconds(self) -> None:
+        assert parse_duration("90s") == 90
+        assert parse_duration("90") == 90
+
+    def test_minutes(self) -> None:
+        assert parse_duration("30m") == 1800
+
+    def test_hours(self) -> None:
+        assert parse_duration("6h") == 6 * 3600
+
+    def test_days(self) -> None:
+        assert parse_duration("2d") == 2 * 86400
+
+    def test_uppercase_unit(self) -> None:
+        assert parse_duration("6H") == 6 * 3600
+
+    def test_whitespace(self) -> None:
+        assert parse_duration("  6h ") == 6 * 3600
+
+    def test_invalid(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            parse_duration("6 hours")
+        with pytest.raises(ValueError):
+            parse_duration("abc")

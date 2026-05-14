@@ -157,6 +157,7 @@ juris stats
 | `--limit N` | Maximum number of documents to collect |
 | `--skip-existing / --no-skip-existing` | Skip already collected documents (default: on) |
 | `--skip-content / --no-skip-content` | Metadata only, skip full text (default: off) |
+| `--max-age DUR` | Skip the run if a previous unfiltered run finished within this window (e.g. `6h`, `30m`, `1d`). Default `6h` for `collect-all`, off otherwise. |
 | `--data-dir PATH` | Output directory (default: `data`) |
 | `-v, --verbose` | Enable debug logging |
 
