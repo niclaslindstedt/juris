@@ -115,6 +115,13 @@ class LagrummetCollector(BaseCollector):
             if prefix != agency.prefix:
                 continue
 
+            # Skip direct file links (ändringsföreskrifter are linked as PDFs on
+            # av.se). They can't be parsed as HTML detail pages and need a
+            # separate PDF-extraction path that doesn't exist yet.
+            if re.search(r"\.(pdf|docx?|rtf)(\?|$)", href, re.IGNORECASE):
+                logger.debug("Skipping non-HTML link %s", href)
+                continue
+
             full_url = urljoin(agency.base_url, href)
             items.append(
                 {
@@ -190,8 +197,22 @@ class LagrummetCollector(BaseCollector):
             # Try any ISO date on the page
             doc_date = _parse_iso_date(page_text)
         if not doc_date:
-            logger.warning("Could not parse date from %s, using today", page_url)
-            doc_date = date.today()
+            # Fall back to Jan 1 of the designation year when we know it —
+            # still approximate, but at least lands in the correct year.
+            if session and session.isdigit():
+                doc_date = date(int(session), 1, 1)
+                logger.warning(
+                    "Could not parse date from %s, using %s based on designation year",
+                    page_url,
+                    doc_date.isoformat(),
+                )
+            else:
+                doc_date = date.today()
+                logger.warning(
+                    "Could not parse date or year from %s, using today (%s)",
+                    page_url,
+                    doc_date.isoformat(),
+                )
 
         # Extract main content
         summary_text, summary_html = extract_page_content(soup)
