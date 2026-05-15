@@ -962,9 +962,9 @@ def collect_all(
         f"across {len(plan)} document types"
     )
     if failed_types:
-        click.echo("\nFailures:")
+        click.echo("\nFailures:", err=True)
         for r in failed_types:
-            click.echo(f"  {r.doc_type} ({r.source}): {r.error}")
+            click.echo(f"  {r.doc_type} ({r.source}): {r.error}", err=True)
 
     # Auto-generate a report
     from juris.report import generate_report, save_report
@@ -975,6 +975,11 @@ def collect_all(
         f"\nReport: {rpt.total_documents} documents across "
         f"{rpt.total_doc_types} types (saved to {report_path})"
     )
+
+    # Surface partial failures as a non-zero exit so callers (CI, scripts,
+    # humans) know a re-run is needed for the failed doc types.
+    if failed_types:
+        ctx.exit(1)
 
 
 # ---------------------------------------------------------------------------

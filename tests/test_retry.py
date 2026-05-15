@@ -139,6 +139,84 @@ async def test_fetch_with_retry_exhausts_retries() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_with_retry_budget_exhausted_raises_fetchbudgetexhausted() -> None:
+    """When wall-clock budget runs out, raise FetchBudgetExhausted (not the underlying error)."""
+    from juris.collectors.base import FetchBudgetExhausted
+
+    collector = DummyCollector()
+    # Effectively unbounded retries; budget is what should trip.
+    collector._max_retries = 10**9
+    collector._backoff_base = 0.01
+    collector._backoff_cap = 0.02
+    collector._retry_budget = 0.05
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+    collector._client = mock_client
+
+    with pytest.raises(FetchBudgetExhausted) as exc_info:
+        await collector._fetch_with_retry("GET", "https://example.com")
+
+    assert isinstance(exc_info.value.last_error, httpx.ReadTimeout)
+    # Should have made at least one attempt before giving up.
+    assert mock_client.request.call_count >= 1
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_fetch_budget_exhausted_propagates_through_fetch_json() -> None:
+    """FetchBudgetExhausted must NOT be swallowed by collectors' HTTPError catch."""
+    from juris.collectors.base import FetchBudgetExhausted
+    from juris.collectors.riksdagen import RiksdagenCollector
+
+    collector = RiksdagenCollector(rate_limit=0.0)
+    collector._max_retries = 10**9
+    collector._backoff_base = 0.01
+    collector._backoff_cap = 0.02
+    collector._retry_budget = 0.05
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+    collector._client = mock_client
+
+    with pytest.raises(FetchBudgetExhausted):
+        await collector._fetch_json("https://data.riksdagen.se/dokumentlista/?doktyp=prop")
+
+    await collector.close()
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_retry_capped_backoff() -> None:
+    """Backoff should be capped — many retries should not require exponential wait."""
+    collector = DummyCollector()
+    collector._max_retries = 5
+    collector._backoff_base = 1.0
+    collector._backoff_factor = 10.0
+    collector._backoff_cap = 0.01  # tiny cap so 5 retries finish near-instantly
+    collector._retry_budget = 10.0
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.is_closed = False
+    mock_client.request = AsyncMock(side_effect=httpx.ReadTimeout("timeout"))
+    collector._client = mock_client
+
+    import time as _time
+
+    start = _time.monotonic()
+    with pytest.raises(httpx.ReadTimeout):
+        await collector._fetch_with_retry("GET", "https://example.com")
+    elapsed = _time.monotonic() - start
+
+    # Without a cap, base=1.0 and factor=10.0 over 5 retries would be 11_111s.
+    # With the 0.01s cap, total wait is ~0.05s; allow ample margin.
+    assert elapsed < 1.0
+    assert mock_client.request.call_count == 6  # initial + 5 retries
+    await collector.close()
+
+
+@pytest.mark.asyncio
 async def test_fetch_with_retry_respects_retry_after_header() -> None:
     """Should use Retry-After header value on 429."""
     collector = DummyCollector()

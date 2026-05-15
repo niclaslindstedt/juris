@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import date
@@ -25,10 +27,52 @@ USER_AGENT = f"juris/{__version__} (Swedish law data collector)"
 # HTTP status codes that are considered transient and worth retrying
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
-# Default retry configuration
-_DEFAULT_MAX_RETRIES = 3
+# Network errors that are considered transient and worth retrying
+_RETRYABLE_NETWORK_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+)
+
+# Default retry configuration: keep retrying for up to an hour with a
+# capped exponential backoff. ``max_retries`` defaults to effectively
+# unlimited so the wall-clock ``retry_budget`` is what gates real runs;
+# tests override ``max_retries`` to a small number for fast assertions.
+_DEFAULT_MAX_RETRIES = sys.maxsize
 _DEFAULT_BACKOFF_BASE = 1.0  # seconds
 _DEFAULT_BACKOFF_FACTOR = 2.0
+_DEFAULT_BACKOFF_CAP = 60.0  # seconds — never sleep longer than this between attempts
+_DEFAULT_RETRY_BUDGET = 3600.0  # seconds — give up after this much total wall-clock time
+
+
+def _describe_error(exc: BaseException | None) -> str:
+    """Compact description of a fetch failure for log lines."""
+    if exc is None:
+        return "unknown error"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    return type(exc).__name__
+
+
+class FetchBudgetExhausted(Exception):
+    """Raised when a fetch keeps failing transiently past the retry budget.
+
+    Deliberately *not* a subclass of ``httpx.HTTPError`` so that collectors
+    which catch ``HTTPError`` to soften individual fetch failures still let
+    this propagate up to the CLI, where it surfaces as a hard run failure.
+    """
+
+    def __init__(self, url: str, elapsed: float, last_error: BaseException) -> None:
+        self.url = url
+        self.elapsed = elapsed
+        self.last_error = last_error
+        super().__init__(
+            f"Retry budget exhausted after {elapsed:.0f}s for {url}: "
+            f"{type(last_error).__name__}: {last_error}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Collector registry — populated automatically via __init_subclass__
@@ -77,6 +121,8 @@ class BaseCollector(ABC):
         max_retries: int = _DEFAULT_MAX_RETRIES,
         backoff_base: float = _DEFAULT_BACKOFF_BASE,
         backoff_factor: float = _DEFAULT_BACKOFF_FACTOR,
+        backoff_cap: float = _DEFAULT_BACKOFF_CAP,
+        retry_budget: float = _DEFAULT_RETRY_BUDGET,
     ) -> None:
         self._limiter = RateLimiter(min_interval=rate_limit)
         self._client: httpx.AsyncClient | None = None
@@ -86,6 +132,8 @@ class BaseCollector(ABC):
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._backoff_factor = backoff_factor
+        self._backoff_cap = backoff_cap
+        self._retry_budget = retry_budget
         self.total_available: int | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -116,6 +164,11 @@ class BaseCollector(ABC):
         """
         return True
 
+    def _compute_backoff(self, retries_done: int) -> float:
+        """Capped exponential backoff: base, base*factor, base*factor^2, ..., cap."""
+        delay = self._backoff_base * (self._backoff_factor**retries_done)
+        return min(delay, self._backoff_cap)
+
     async def _fetch_with_retry(
         self,
         method: str,
@@ -124,16 +177,28 @@ class BaseCollector(ABC):
     ) -> httpx.Response:
         """Execute an HTTP request with retry and exponential backoff.
 
-        Retries on transient HTTP errors (429, 5xx) and network timeouts.
-        Respects Retry-After headers on 429 responses.
+        Retries transient HTTP errors (429, 5xx) and network errors with a
+        capped exponential backoff. Honours ``Retry-After`` on 429s and a
+        wall-clock ``retry_budget`` so transient outages are waited out
+        rather than skipped. ``max_retries`` is a separate per-call cap
+        (effectively unbounded by default) so tests can pin a low value.
 
-        Raises httpx.HTTPStatusError or httpx.HTTPError after all retries
-        are exhausted.
+        Permanent failures (non-retryable 4xx) raise the underlying
+        ``HTTPStatusError`` immediately, without retry.
+
+        When the retry budget runs out (only relevant in real runs where
+        ``max_retries`` is effectively infinite) this raises
+        ``FetchBudgetExhausted`` so the caller's run fails loudly rather
+        than silently returning empty results. When ``max_retries`` is
+        reached first, the original transient exception is re-raised.
         """
         client = await self._get_client()
-        last_exc: Exception | None = None
+        start = time.monotonic()
+        retries_done = 0
+        last_exc: BaseException | None = None
 
-        for attempt in range(self._max_retries + 1):
+        while True:
+            retry_after_hint: float | None = None
             try:
                 await self._limiter.wait()
                 resp = await client.request(method, url, **kwargs)
@@ -142,49 +207,44 @@ class BaseCollector(ABC):
                     resp.raise_for_status()
                     return resp
 
-                # Retryable status — compute delay
-                if attempt == self._max_retries:
+                # Treat retryable status as a failure to retry.
+                try:
                     resp.raise_for_status()
-                    return resp  # unreachable, raise_for_status throws
+                except httpx.HTTPStatusError as exc:
+                    last_exc = exc
 
-                delay = self._backoff_base * (self._backoff_factor**attempt)
                 if resp.status_code == 429:
-                    retry_after = resp.headers.get("Retry-After")
-                    if retry_after and retry_after.isdigit():
-                        delay = max(delay, float(retry_after))
+                    header = resp.headers.get("Retry-After")
+                    if header and header.isdigit():
+                        retry_after_hint = float(header)
 
-                logger.warning(
-                    "HTTP %d for %s, retrying in %.1fs (attempt %d/%d)",
-                    resp.status_code,
-                    url,
-                    delay,
-                    attempt + 1,
-                    self._max_retries,
-                )
-                await asyncio.sleep(delay)
-
-            except (
-                httpx.TimeoutException,
-                httpx.ConnectError,
-                httpx.ReadError,
-                httpx.RemoteProtocolError,
-            ) as exc:
+            except _RETRYABLE_NETWORK_ERRORS as exc:
                 last_exc = exc
-                if attempt == self._max_retries:
-                    raise
-                delay = self._backoff_base * (self._backoff_factor**attempt)
-                logger.warning(
-                    "%s for %s, retrying in %.1fs (attempt %d/%d)",
-                    type(exc).__name__,
-                    url,
-                    delay,
-                    attempt + 1,
-                    self._max_retries,
-                )
-                await asyncio.sleep(delay)
 
-        # Should not be reached, but satisfy the type checker
-        raise last_exc or httpx.HTTPError("All retries exhausted")
+            # Decide whether to retry.
+            retries_done += 1
+            if retries_done > self._max_retries:
+                assert last_exc is not None
+                raise last_exc
+
+            elapsed = time.monotonic() - start
+            delay = self._compute_backoff(retries_done - 1)
+            if retry_after_hint is not None:
+                delay = max(delay, retry_after_hint)
+
+            if elapsed + delay > self._retry_budget:
+                assert last_exc is not None
+                raise FetchBudgetExhausted(url, elapsed, last_exc) from last_exc
+
+            logger.warning(
+                "%s for %s, retrying in %.1fs (attempt %d, %.0fs elapsed)",
+                _describe_error(last_exc),
+                url,
+                delay,
+                retries_done,
+                elapsed,
+            )
+            await asyncio.sleep(delay)
 
     # ------------------------------------------------------------------
     # Convenience fetch helpers — override in subclasses for custom
@@ -342,6 +402,11 @@ class BaseCollector(ABC):
     async def _download_file(self, url: str, dest: Path, limiter: RateLimiter) -> bool:
         """Download a file via streaming with retry. Returns True on success.
 
+        Retries transient failures with the same capped-backoff/budget
+        policy as ``_fetch_with_retry``. Unlike that method, individual
+        attachment failures are treated as soft: this returns ``False``
+        when the budget runs out so the rest of the document still saves.
+
         Writes to a temporary file first and atomically renames on
         completion so that an interrupted download never leaves a
         partial file at *dest*.
@@ -350,66 +415,79 @@ class BaseCollector(ABC):
         import tempfile
 
         client = await self._get_client()
-        last_exc: Exception | None = None
+        start = time.monotonic()
+        retries_done = 0
+        last_exc: BaseException | None = None
 
-        for attempt in range(self._max_retries + 1):
+        while True:
+            retry_after_hint: float | None = None
             try:
                 await limiter.wait()
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 async with client.stream("GET", url) as resp:
                     if resp.status_code in _RETRYABLE_STATUS_CODES:
-                        if attempt < self._max_retries:
-                            delay = self._backoff_base * (self._backoff_factor**attempt)
-                            logger.warning(
-                                "HTTP %d downloading %s, retrying in %.1fs",
-                                resp.status_code,
-                                url,
-                                delay,
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                    resp.raise_for_status()
-                    fd, tmp = tempfile.mkstemp(dir=dest.parent, suffix=".tmp")
-                    try:
-                        with os.fdopen(fd, "wb") as f:
-                            async for chunk in resp.aiter_bytes(chunk_size=65536):
-                                f.write(chunk)
-                        os.replace(tmp, dest)
-                    except BaseException:
                         try:
-                            os.unlink(tmp)
-                        except OSError:
-                            pass
-                        raise
-                return True
-            except (
-                httpx.TimeoutException,
-                httpx.ConnectError,
-                httpx.ReadError,
-                httpx.RemoteProtocolError,
-            ) as e:
-                last_exc = e
-                if attempt < self._max_retries:
-                    delay = self._backoff_base * (self._backoff_factor**attempt)
-                    logger.warning(
-                        "%s downloading %s, retrying in %.1fs",
-                        type(e).__name__,
-                        url,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-            except (httpx.HTTPError, OSError) as e:
-                logger.warning("Failed to download %s: %s", url, e or type(e).__name__)
+                            resp.raise_for_status()
+                        except httpx.HTTPStatusError as exc:
+                            last_exc = exc
+                        if resp.status_code == 429:
+                            header = resp.headers.get("Retry-After")
+                            if header and header.isdigit():
+                                retry_after_hint = float(header)
+                    else:
+                        resp.raise_for_status()
+                        fd, tmp = tempfile.mkstemp(dir=dest.parent, suffix=".tmp")
+                        try:
+                            with os.fdopen(fd, "wb") as f:
+                                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                                    f.write(chunk)
+                            os.replace(tmp, dest)
+                        except BaseException:
+                            try:
+                                os.unlink(tmp)
+                            except OSError:
+                                pass
+                            raise
+                        return True
+            except _RETRYABLE_NETWORK_ERRORS as exc:
+                last_exc = exc
+            except (httpx.HTTPError, OSError) as exc:
+                logger.warning("Failed to download %s: %s", url, exc or type(exc).__name__)
                 return False
 
-        logger.warning(
-            "Failed to download %s after %d retries: %s",
-            url,
-            self._max_retries,
-            last_exc,
-        )
-        return False
+            retries_done += 1
+            if retries_done > self._max_retries:
+                logger.warning(
+                    "Failed to download %s after %d attempts: %s",
+                    url,
+                    retries_done,
+                    _describe_error(last_exc),
+                )
+                return False
+
+            elapsed = time.monotonic() - start
+            delay = self._compute_backoff(retries_done - 1)
+            if retry_after_hint is not None:
+                delay = max(delay, retry_after_hint)
+
+            if elapsed + delay > self._retry_budget:
+                logger.warning(
+                    "Retry budget exhausted downloading %s after %.0fs: %s",
+                    url,
+                    elapsed,
+                    _describe_error(last_exc),
+                )
+                return False
+
+            logger.warning(
+                "%s downloading %s, retrying in %.1fs (attempt %d, %.0fs elapsed)",
+                _describe_error(last_exc),
+                url,
+                delay,
+                retries_done,
+                elapsed,
+            )
+            await asyncio.sleep(delay)
 
     async def download_attachments(self, doc: Document, base_dir: Path) -> Document:
         """Download PDF attachments and extract text from the primary one.
