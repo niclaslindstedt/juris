@@ -11,7 +11,7 @@
     "prerender": "tsx scripts/prerender.ts"
   },
   "dependencies": {
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.14.0"
   },
